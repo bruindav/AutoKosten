@@ -1,5 +1,6 @@
-// AutoKosten v2 fix4
-// Nieuw: inline bewerken kostenposten, automatische MRB kwartaalposten
+// AutoKosten v2 fix5
+// Nieuw: kostenlijst ingeklapt per jaar, MRB overschrijfbaar bedrag,
+//        verzekering als jaarbedrag -> 12 maandposten automatisch
 
 import { useState, useEffect } from "react";
 import {
@@ -7,12 +8,12 @@ import {
   Tooltip, Legend, ResponsiveContainer, ReferenceLine
 } from "recharts";
 
-const APP_VERSION = "v2 fix4";
+const APP_VERSION = "v2 fix5";
 const STORAGE_KEY = "autokosten_v2";
 
 const COLORS = {
   primary: "#1B4F72", accent: "#E67E22", success: "#27AE60",
-  danger: "#E74C3C", lease: "#8E44AD", muted: "#7F8C8D",
+  danger: "#E74C3C", lease: "#8E44AD",
 };
 
 const COST_CATEGORIES = [
@@ -49,7 +50,7 @@ function mrbBenzineKwartaal(kg) {
   return 299 + Math.ceil((g - 2500) / 100) * 12;
 }
 
-function berekenMRB(gewichtKg, brandstof, provincie) {
+function berekenMRBSchatting(gewichtKg, brandstof, provincie) {
   if (!gewichtKg || Number(gewichtKg) < 100) return null;
   const opcenten = MRB_OPCENTEN[provincie?.toLowerCase()] ?? 91.5;
   const bf = (brandstof || "").toLowerCase();
@@ -63,30 +64,64 @@ function berekenMRB(gewichtKg, brandstof, provincie) {
   return { kwartaal: Math.round(metOp), jaarlijks: Math.round(metOp * 4), basisBedrag: Math.round(basis), opcenten };
 }
 
-// Genereer MRB kwartaalposten voor een periode
-function genereerMrbPosten(aankoopdatum, verkoopdatum, mrbKwartaal) {
-  if (!mrbKwartaal || mrbKwartaal <= 0) return [];
-  const start  = new Date(aankoopdatum);
-  const einde  = new Date(verkoopdatum);
-  const posten = [];
-  // Eerste betaaldag = 1e dag van eerstvolgende kwartaal na aankoop
-  const d = new Date(start);
-  d.setDate(1);
-  d.setMonth(Math.ceil((d.getMonth()) / 3) * 3); // volgende kwartaalmaand: 0,3,6,9
-  if (d <= start) d.setMonth(d.getMonth() + 3);
+// MRB: gebruik werkelijk bedrag als opgegeven, anders schatting
+function getMrbKwartaal(mrbSchatting, mrbWerkelijkMaand) {
+  if (mrbWerkelijkMaand && Number(mrbWerkelijkMaand) > 0) {
+    return Math.round(Number(mrbWerkelijkMaand) * 3);
+  }
+  return mrbSchatting?.kwartaal || 0;
+}
 
+// Genereer kwartaalposten MRB
+function genereerMrbPosten(aankoopdatum, verkoopdatum, kwartaalBedrag) {
+  if (!kwartaalBedrag || kwartaalBedrag <= 0) return [];
+  const einde = new Date(verkoopdatum);
+  const d = new Date(aankoopdatum);
+  d.setDate(1);
+  // Spring naar eerstvolgende kwartaalmaand (jan=0, apr=3, jul=6, okt=9)
+  const kwartaalMaand = Math.ceil((d.getMonth() + 1) / 3) * 3 % 12;
+  d.setMonth(kwartaalMaand === 0 ? 12 : kwartaalMaand);
+  if (d <= new Date(aankoopdatum)) d.setMonth(d.getMonth() + 3);
+  const posten = [];
   while (d <= einde) {
-    const datumStr = d.toISOString().slice(0, 10);
     posten.push({
-      id:           `mrb_${datumStr}`,
-      datum:        datumStr,
-      categorie:    "wegenbelasting",
-      bedrag:       mrbKwartaal,
-      km:           null,
-      omschrijving: "MRB kwartaal (automatisch)",
-      automatisch:  true,
+      id: `mrb_${d.toISOString().slice(0,10)}`,
+      datum: d.toISOString().slice(0,10),
+      categorie: "wegenbelasting",
+      bedrag: kwartaalBedrag,
+      km: null,
+      omschrijving: "MRB kwartaal",
+      automatisch: true,
+      type: "mrb",
     });
     d.setMonth(d.getMonth() + 3);
+  }
+  return posten;
+}
+
+// Genereer maandposten verzekering per jaar
+function genereerVerzekeringPosten(aankoopdatum, verkoopdatum, verzekeringJaren) {
+  // verzekeringJaren: [{startJaar, bedrag}]  bijv [{startJaar:2022, bedrag:1200}]
+  if (!verzekeringJaren?.length) return [];
+  const einde = new Date(verkoopdatum);
+  const posten = [];
+  for (const { startJaar, bedrag } of verzekeringJaren) {
+    if (!bedrag || bedrag <= 0) continue;
+    const maandBedrag = Math.round(bedrag / 12);
+    for (let m = 0; m < 12; m++) {
+      const d = new Date(startJaar, m, 1);
+      if (d < new Date(aankoopdatum) || d > einde) continue;
+      posten.push({
+        id: `verz_${startJaar}_${m}`,
+        datum: d.toISOString().slice(0,10),
+        categorie: "verzekering",
+        bedrag: maandBedrag,
+        km: null,
+        omschrijving: `Verzekering ${startJaar} (automatisch)`,
+        automatisch: true,
+        type: "verzekering",
+      });
+    }
   }
   return posten;
 }
@@ -96,14 +131,14 @@ function berekenLeasePrive(catalogus, looptijdMnd, kmPerJaar, aanbetaling) {
   const afschr     = (catalogus - (aanbetaling || 0) - restwaarde) / looptijdMnd;
   const rente      = (catalogus * 0.038) / 12;
   const onderhoud  = 55 + (kmPerJaar / 12) * 0.022;
-  const verzekering = catalogus * 0.0017;
-  return Math.max(Math.round(afschr + rente + onderhoud + verzekering), 199);
+  const verz       = catalogus * 0.0017;
+  return Math.max(Math.round(afschr + rente + onderhoud + verz), 199);
 }
 
 function afschrijvingsCurve(aankoopprijs, verkoopprijs, jaren) {
   const totaal = aankoopprijs - verkoopprijs;
   return Array.from({ length: Math.ceil(jaren) + 1 }, (_, j) => ({
-    jaar:   j,
+    jaar: j,
     waarde: Math.round(verkoopprijs + totaal * (1 - Math.pow(j / Math.max(jaren, 1), 0.65))),
   }));
 }
@@ -117,6 +152,9 @@ function defaultState() {
     jaarlijkseKm: 15000, cataloguswaarde: 30000,
     leaseLooptijd: 48, leaseKm: 15000, leaseAanbetaling: 0,
     mrbAutomatisch: false,
+    mrbWerkelijkMaand: "",       // werkelijk MRB bedrag per maand
+    verzekeringAutomatisch: false,
+    verzekeringJaren: [],        // [{startJaar, bedrag}]
     kosten: [],
   };
 }
@@ -164,6 +202,20 @@ const Row = ({ label, children, wide }) => (
   </div>
 );
 
+const Toggle = ({ checked, onChange, label, sub }) => (
+  <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: checked ? "#f0faf4" : "#f7f6f2", borderRadius: 8, marginBottom: 8 }}>
+    <label style={{ position: "relative", width: 36, height: 20, display: "inline-block", flexShrink: 0, cursor: "pointer" }}>
+      <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} style={{ opacity: 0, width: 0, height: 0 }} />
+      <span style={{ position: "absolute", inset: 0, background: checked ? COLORS.success : "#ccc", borderRadius: 20, transition: "background 0.2s" }} />
+      <span style={{ position: "absolute", top: 2, left: checked ? 18 : 2, width: 16, height: 16, background: "#fff", borderRadius: "50%", transition: "left 0.2s", pointerEvents: "none" }} />
+    </label>
+    <div>
+      <div style={{ fontSize: 13, fontWeight: 500 }}>{label}</div>
+      {sub && <div style={{ fontSize: 12, color: "#999" }}>{sub}</div>}
+    </div>
+  </div>
+);
+
 const CustomTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return (
@@ -174,35 +226,81 @@ const CustomTooltip = ({ active, payload, label }) => {
   );
 };
 
-// Inline edit rij voor een kostenpost
+// Inline edit rij
 function EditRij({ kost, onSave, onCancel }) {
-  const [edit, setEdit] = useState({ ...kost, bedrag: String(kost.bedrag), km: kost.km ? String(kost.km) : "" });
+  const [e, setE] = useState({ ...kost, bedrag: String(kost.bedrag), km: kost.km ? String(kost.km) : "" });
   return (
-    <tr style={{ background: "#fffbf5", borderBottom: "0.5px solid #f0ede8" }}>
+    <tr style={{ background: "#fffbf5" }}>
+      <td style={{ padding: "4px 4px" }}><input type="date" value={e.datum} onChange={x => setE(p => ({ ...p, datum: x.target.value }))} style={{ width: 130 }} /></td>
       <td style={{ padding: "4px 4px" }}>
-        <input type="date" value={edit.datum} onChange={e => setEdit(p => ({ ...p, datum: e.target.value }))} style={{ width: 130 }} />
-      </td>
-      <td style={{ padding: "4px 4px" }}>
-        <select value={edit.categorie} onChange={e => setEdit(p => ({ ...p, categorie: e.target.value }))} style={{ width: 160 }}>
+        <select value={e.categorie} onChange={x => setE(p => ({ ...p, categorie: x.target.value }))} style={{ width: 160 }}>
           {COST_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.icon} {c.label}</option>)}
         </select>
       </td>
-      <td style={{ padding: "4px 4px" }}>
-        <input type="number" value={edit.bedrag} onChange={e => setEdit(p => ({ ...p, bedrag: e.target.value }))} style={{ width: 80 }} />
-      </td>
-      <td style={{ padding: "4px 4px" }}>
-        <input type="number" placeholder="—" value={edit.km} onChange={e => setEdit(p => ({ ...p, km: e.target.value }))} style={{ width: 90 }} />
-      </td>
-      <td style={{ padding: "4px 4px" }}>
-        <input value={edit.omschrijving} onChange={e => setEdit(p => ({ ...p, omschrijving: e.target.value }))} style={{ width: "100%" }} />
-      </td>
+      <td style={{ padding: "4px 4px" }}><input type="number" value={e.bedrag} onChange={x => setE(p => ({ ...p, bedrag: x.target.value }))} style={{ width: 80 }} /></td>
+      <td style={{ padding: "4px 4px" }}><input type="number" placeholder="—" value={e.km} onChange={x => setE(p => ({ ...p, km: x.target.value }))} style={{ width: 90 }} /></td>
+      <td style={{ padding: "4px 4px" }}><input value={e.omschrijving} onChange={x => setE(p => ({ ...p, omschrijving: x.target.value }))} style={{ width: "100%" }} /></td>
       <td style={{ padding: "4px 4px", whiteSpace: "nowrap" }}>
-        <button onClick={() => onSave({ ...edit, bedrag: Number(edit.bedrag), km: edit.km ? Number(edit.km) : null })}
+        <button onClick={() => onSave({ ...e, bedrag: Number(e.bedrag), km: e.km ? Number(e.km) : null })}
           style={{ background: COLORS.success, color: "#fff", border: "none", borderRadius: 4, padding: "4px 10px", cursor: "pointer", marginRight: 4, fontSize: 12 }}>✓</button>
         <button onClick={onCancel}
           style={{ background: "none", border: "0.5px solid #ccc", borderRadius: 4, padding: "4px 8px", cursor: "pointer", fontSize: 12 }}>✕</button>
       </td>
     </tr>
+  );
+}
+
+// Jaargroep voor de kostenlijst
+function JaarGroep({ jaar, posten, openJaren, setOpenJaren, editId, setEditId, onSave, onVerwijder }) {
+  const open   = openJaren.has(jaar);
+  const totaal = posten.reduce((s, k) => s + Number(k.bedrag), 0);
+  const auto   = posten.filter(k => k.automatisch).length;
+  return (
+    <div style={{ marginBottom: 4 }}>
+      {/* Jaar-header */}
+      <div
+        onClick={() => setOpenJaren(prev => { const s = new Set(prev); s.has(jaar) ? s.delete(jaar) : s.add(jaar); return s; })}
+        style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", background: "#f7f6f2", borderRadius: open ? "8px 8px 0 0" : 8, cursor: "pointer", userSelect: "none" }}
+      >
+        <span style={{ fontSize: 13, color: open ? COLORS.primary : "#666", transform: `rotate(${open ? 90 : 0}deg)`, display: "inline-block", transition: "transform 0.15s", width: 14 }}>▶</span>
+        <span style={{ fontWeight: 600, fontSize: 14 }}>{jaar}</span>
+        <span style={{ fontSize: 12, color: "#999" }}>{posten.length} posten{auto > 0 ? ` (${auto} auto)` : ""}</span>
+        <span style={{ marginLeft: "auto", fontWeight: 600, fontSize: 14 }}>{fmt(totaal)}</span>
+      </div>
+      {/* Posten */}
+      {open && (
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, border: "0.5px solid #e8e6e0", borderTop: "none", borderRadius: "0 0 8px 8px", overflow: "hidden" }}>
+          <tbody>
+            {posten.map(k => {
+              const cat = COST_CATEGORIES.find(c => c.id === k.categorie);
+              if (editId === k.id) return <EditRij key={k.id} kost={k} onSave={onSave} onCancel={() => setEditId(null)} />;
+              return (
+                <tr key={k.id} style={{ borderBottom: "0.5px solid #f0ede8", background: k.automatisch ? "#f9fdf9" : "transparent" }}>
+                  <td style={{ padding: "7px 10px", color: "#888", width: 110 }}>{k.datum}</td>
+                  <td style={{ padding: "7px 8px", width: 180 }}>{cat?.icon} {cat?.label || k.categorie}</td>
+                  <td style={{ padding: "7px 8px", fontWeight: 500, width: 90 }}>{fmt(k.bedrag)}</td>
+                  <td style={{ padding: "7px 8px", color: "#bbb", width: 90 }}>{k.km ? fmtN(k.km) : "—"}</td>
+                  <td style={{ padding: "7px 8px", color: "#999" }}>
+                    {k.omschrijving || "—"}
+                    {k.automatisch && <span style={{ marginLeft: 6, fontSize: 11, color: COLORS.success, background: "#e8f8ef", borderRadius: 3, padding: "1px 5px" }}>auto</span>}
+                  </td>
+                  <td style={{ padding: "7px 8px", whiteSpace: "nowrap", width: 60 }}>
+                    {!k.automatisch && (
+                      <>
+                        <button onClick={() => setEditId(k.id)} title="Bewerken"
+                          style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.primary, fontSize: 14, marginRight: 2 }}>✏</button>
+                        <button onClick={() => onVerwijder(k.id)} title="Verwijderen"
+                          style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.danger, fontSize: 14 }}>✕</button>
+                      </>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </div>
   );
 }
 
@@ -220,10 +318,14 @@ export default function App() {
   const [rdwError, setRdwError]     = useState("");
   const [rdwRaw, setRdwRaw]         = useState(null);
   const [nieuwKost, setNieuwKost]   = useState({ datum: "", categorie: "brandstof", bedrag: "", km: "", omschrijving: "" });
-  const [editId, setEditId]         = useState(null);   // id van rij in bewerking
+  const [editId, setEditId]         = useState(null);
+  const [openJaren, setOpenJaren]   = useState(() => new Set([String(new Date().getFullYear())]));
   const [importText, setImportText] = useState("");
   const [importError, setImportError] = useState("");
   const [saveFlash, setSaveFlash]   = useState(false);
+  // Nieuwe verzekeringrij invoer
+  const [nieuwVerzJaar, setNieuwVerzJaar] = useState(String(new Date().getFullYear()));
+  const [nieuwVerzBedrag, setNieuwVerzBedrag] = useState("");
 
   useEffect(() => {
     try {
@@ -236,7 +338,7 @@ export default function App() {
 
   const set = (key, val) => setState(s => ({ ...s, [key]: val }));
 
-  // RDW lookup
+  // RDW
   const handleLookup = async () => {
     setRdwLoading(true); setRdwError("");
     try {
@@ -268,35 +370,45 @@ export default function App() {
   const totaleKm      = Math.round(state.jaarlijkseKm * bezitsjaren);
   const geredenKm     = Math.max(state.jaarlijkseKm * verlopenJaren, 1);
 
-  const mrb = berekenMRB(state.gewichtKg, state.brandstof, state.provincie);
+  const mrbSchatting = berekenMRBSchatting(state.gewichtKg, state.brandstof, state.provincie);
+  const mrbKwartaal  = getMrbKwartaal(mrbSchatting, state.mrbWerkelijkMaand);
 
-  // Combineer handmatige + automatische MRB posten
-  const mrbPosten = state.mrbAutomatisch && mrb
-    ? genereerMrbPosten(state.aankoopdatum, state.verwachteVerkoopdatum, mrb.kwartaal)
+  const mrbPosten  = state.mrbAutomatisch
+    ? genereerMrbPosten(state.aankoopdatum, state.verwachteVerkoopdatum, mrbKwartaal)
     : [];
-  const alleKosten = [...state.kosten, ...mrbPosten];
+  const verzPosten = state.verzekeringAutomatisch
+    ? genereerVerzekeringPosten(state.aankoopdatum, state.verwachteVerkoopdatum, state.verzekeringJaren)
+    : [];
 
-  const totaalKosten  = alleKosten.reduce((s, k) => s + Number(k.bedrag), 0);
-  const totaleAfschr  = state.aankoopprijs - state.verwachtVerkoopprijs;
-  const afschrJaar    = totaleAfschr / bezitsjaren;
+  const alleKosten = [...state.kosten, ...mrbPosten, ...verzPosten];
 
-  const variabelTotaal = alleKosten
-    .filter(k => COST_CATEGORIES.find(c => c.id === k.categorie)?.variabel)
-    .reduce((s, k) => s + Number(k.bedrag), 0);
-  const vastTotaal = totaalKosten - variabelTotaal;
-
-  const kmVast     = (vastTotaal + totaleAfschr) / geredenKm;
-  const kmVariabel = variabelTotaal / geredenKm;
-  const kmTotaal   = (totaalKosten + totaleAfschr) / geredenKm;
-  const eigenMaand = (totaalKosten + afschrJaar) / Math.max(verlopenJaren * 12, 1);
+  const totaalKosten   = alleKosten.reduce((s, k) => s + Number(k.bedrag), 0);
+  const totaleAfschr   = state.aankoopprijs - state.verwachtVerkoopprijs;
+  const afschrJaar     = totaleAfschr / bezitsjaren;
+  const variabelTotaal = alleKosten.filter(k => COST_CATEGORIES.find(c => c.id === k.categorie)?.variabel).reduce((s, k) => s + Number(k.bedrag), 0);
+  const vastTotaal     = totaalKosten - variabelTotaal;
+  const kmVast         = (vastTotaal + totaleAfschr) / geredenKm;
+  const kmVariabel     = variabelTotaal / geredenKm;
+  const kmTotaal       = (totaalKosten + totaleAfschr) / geredenKm;
+  const eigenMaand     = (totaalKosten + afschrJaar) / Math.max(verlopenJaren * 12, 1);
 
   const leasePrive  = berekenLeasePrive(state.cataloguswaarde, state.leaseLooptijd, state.leaseKm, state.leaseAanbetaling);
   const leaseKmKost = (leasePrive * state.leaseLooptijd + state.leaseAanbetaling) / (state.leaseKm * state.leaseLooptijd / 12);
 
+  // Kosten gegroepeerd per jaar (gesorteerd nieuw→oud)
+  const groepenPerJaar = {};
+  alleKosten.forEach(k => {
+    const j = k.datum?.slice(0,4) || "onbekend";
+    if (!groepenPerJaar[j]) groepenPerJaar[j] = [];
+    groepenPerJaar[j].push(k);
+  });
+  const jarenGesorteerd = Object.keys(groepenPerJaar).sort((a,b) => b.localeCompare(a));
+  // Sorteer posten binnen elk jaar op datum (nieuwste eerst)
+  jarenGesorteerd.forEach(j => groepenPerJaar[j].sort((a,b) => (b.datum||"").localeCompare(a.datum||"")));
+
   // Grafiekdata
   const kostenPerJaar = {};
   alleKosten.forEach(k => { const j = k.datum?.slice(0,4); if (j) kostenPerJaar[j] = (kostenPerJaar[j]||0)+Number(k.bedrag); });
-
   const aankoopJaar = aankoopDt.getFullYear();
   const verkoopJaar = verkoopDt.getFullYear();
   let cumEigen = state.aankoopprijs, cumLease = state.leaseAanbetaling;
@@ -306,29 +418,31 @@ export default function App() {
     cumLease += leasePrive * 12;
     grafiekData.push({ jaar: String(j), "Eigen auto": Math.round(cumEigen), "Privé lease": Math.round(cumLease) });
   }
-
   const jaarBarData = Object.entries(kostenPerJaar).sort().map(([jaar, kosten]) => ({ jaar, kosten }));
   const afschrData  = afschrijvingsCurve(state.aankoopprijs, state.verwachtVerkoopprijs, bezitsjaren);
   const kostPerCat  = COST_CATEGORIES
     .map(c => ({ ...c, totaal: alleKosten.filter(k => k.categorie === c.id).reduce((s, k) => s + Number(k.bedrag), 0) }))
     .filter(c => c.totaal > 0).sort((a,b) => b.totaal - a.totaal);
 
-  // Kosten toevoegen
+  // Toevoegen
   const voegToe = () => {
     if (!nieuwKost.datum || !nieuwKost.bedrag) return;
-    set("kosten", [...state.kosten, {
-      ...nieuwKost, id: Date.now(),
-      bedrag: Number(nieuwKost.bedrag),
-      km: nieuwKost.km ? Number(nieuwKost.km) : null,
-      automatisch: false,
-    }]);
+    const jaar = nieuwKost.datum.slice(0,4);
+    set("kosten", [...state.kosten, { ...nieuwKost, id: Date.now(), bedrag: Number(nieuwKost.bedrag), km: nieuwKost.km ? Number(nieuwKost.km) : null, automatisch: false }]);
+    setOpenJaren(prev => new Set([...prev, jaar]));
     setNieuwKost({ datum: "", categorie: "brandstof", bedrag: "", km: "", omschrijving: "" });
   };
 
-  // Kosten opslaan na bewerking
   const slaOpEdit = (gewijzigd) => {
     set("kosten", state.kosten.map(k => k.id === gewijzigd.id ? gewijzigd : k));
     setEditId(null);
+  };
+
+  const voegVerzJaarToe = () => {
+    if (!nieuwVerzJaar || !nieuwVerzBedrag) return;
+    const bestaand = state.verzekeringJaren.filter(v => v.startJaar !== Number(nieuwVerzJaar));
+    set("verzekeringJaren", [...bestaand, { startJaar: Number(nieuwVerzJaar), bedrag: Number(nieuwVerzBedrag) }].sort((a,b) => a.startJaar - b.startJaar));
+    setNieuwVerzBedrag("");
   };
 
   // Import
@@ -337,11 +451,11 @@ export default function App() {
     try {
       const regels = importText.trim().split("\n").filter(l => l.trim() && !l.startsWith("datum"));
       let id = Date.now();
-      const nieuw = regels.map(regel => {
-        const [datum, cat, bedrag, km, omschr] = regel.split(/[,;	]/);
-        if (!datum || isNaN(Number(bedrag))) throw new Error(`Ongeldige regel: ${regel}`);
-        const catMatch = COST_CATEGORIES.find(c => c.id === cat.trim().toLowerCase() || c.label.toLowerCase().includes(cat.trim().toLowerCase()));
-        return { id: id++, datum: datum.trim(), categorie: catMatch?.id||"overig", bedrag: Number(bedrag), km: km?Number(km):null, omschrijving: omschr?.trim()||"", automatisch: false };
+      const nieuw = regels.map(r => {
+        const [datum, cat, bedrag, km, omschr] = r.split(/[,;	]/);
+        if (!datum || isNaN(Number(bedrag))) throw new Error(`Ongeldige regel: ${r}`);
+        const cm = COST_CATEGORIES.find(c => c.id === cat.trim().toLowerCase() || c.label.toLowerCase().includes(cat.trim().toLowerCase()));
+        return { id: id++, datum: datum.trim(), categorie: cm?.id||"overig", bedrag: Number(bedrag), km: km?Number(km):null, omschrijving: omschr?.trim()||"", automatisch: false };
       });
       set("kosten", [...state.kosten, ...nieuw]);
       setImportText("");
@@ -350,6 +464,11 @@ export default function App() {
 
   const exportCSV = "datum;categorie;bedrag;km;omschrijving\n" +
     alleKosten.map(k => `${k.datum};${k.categorie};${k.bedrag};${k.km||""};${k.omschrijving}`).join("\n");
+
+  // Huidige MRB bedrag tonen (werkelijk of schatting)
+  const mrbToonBedrag = state.mrbWerkelijkMaand && Number(state.mrbWerkelijkMaand) > 0
+    ? Number(state.mrbWerkelijkMaand)
+    : mrbSchatting ? Math.round(mrbSchatting.kwartaal / 3) : null;
 
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
@@ -360,21 +479,17 @@ export default function App() {
         <div>
           <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.1em", color: "#bbb", textTransform: "uppercase", marginBottom: 4 }}>
             AutoKosten {APP_VERSION}
-            {saveFlash && <span style={{ marginLeft: 12, color: COLORS.success }}>✓ opgeslagen</span>}
+            {saveFlash && <span style={{ marginLeft: 12, color: COLORS.success, fontWeight: 400 }}>✓ opgeslagen</span>}
           </div>
           <h1 style={{ margin: 0, fontSize: 26, fontWeight: 600 }}>
             {state.merk && state.model ? `${state.merk} ${state.model}` : "Mijn auto"}
           </h1>
-          {state.bouwjaar && (
-            <div style={{ fontSize: 13, color: "#999", marginTop: 2 }}>
-              {state.bouwjaar} · {state.brandstof} · {state.kenteken}{state.gewichtKg ? ` · ${fmtN(state.gewichtKg)} kg` : ""}
-            </div>
-          )}
+          {state.bouwjaar && <div style={{ fontSize: 13, color: "#999", marginTop: 2 }}>{state.bouwjaar} · {state.brandstof} · {state.kenteken}{state.gewichtKg ? ` · ${fmtN(state.gewichtKg)} kg` : ""}</div>}
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <MetricCard label="Totaalkosten"  value={fmt(totaalKosten + totaleAfschr)} sub="incl. afschrijving" />
-          <MetricCard label="Per maand"     value={fmt(eigenMaand)}   sub="incl. afschr." color={COLORS.accent} />
-          <MetricCard label="Per km"        value={fmtC(kmTotaal)}    sub="vast + variabel" color={COLORS.primary} />
+          <MetricCard label="Per maand"     value={fmt(eigenMaand)}  sub="incl. afschr." color={COLORS.accent} />
+          <MetricCard label="Per km"        value={fmtC(kmTotaal)}   sub="vast + variabel" color={COLORS.primary} />
         </div>
       </div>
 
@@ -439,46 +554,110 @@ export default function App() {
             </Card>
           </div>
 
-          {mrb && (
+          {/* MRB */}
+          {(mrbSchatting || state.mrbWerkelijkMaand) && (
             <Card>
-              <SectionTitle>Motorrijtuigenbelasting schatting</SectionTitle>
+              <SectionTitle>Motorrijtuigenbelasting</SectionTitle>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
-                <MetricCard label="Per kwartaal"   value={fmt(mrb.kwartaal)}    sub="incl. opcenten" />
-                <MetricCard label="Per jaar"        value={fmt(mrb.jaarlijks)}   sub="schatting" color={COLORS.accent} />
-                <MetricCard label="Basis excl. op." value={fmt(mrb.basisBedrag)} sub="landelijk tarief" />
-                <MetricCard label="Opcenten"        value={`${mrb.opcenten}%`}   sub={state.provincie} />
+                {mrbSchatting && <MetricCard label="Schatting /kwartaal" value={fmt(mrbSchatting.kwartaal)} sub="op basis van gewicht" />}
+                {mrbSchatting && <MetricCard label="Schatting /jaar"     value={fmt(mrbSchatting.jaarlijks)} sub="excl. correcties" />}
+                {mrbToonBedrag && <MetricCard label="Werkelijk /maand"   value={fmt(mrbToonBedrag)} sub={state.mrbWerkelijkMaand ? "door jou opgegeven" : "schatting"} color={state.mrbWerkelijkMaand ? COLORS.primary : "#999"} />}
+                {mrbToonBedrag && <MetricCard label="Werkelijk /kwartaal" value={fmt(mrbToonBedrag * 3)} sub={state.mrbWerkelijkMaand ? "door jou opgegeven" : "schatting"} color={state.mrbWerkelijkMaand ? COLORS.accent : "#999"} />}
               </div>
-              {/* Toggle automatische MRB posten */}
-              <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: state.mrbAutomatisch ? "#f0faf4" : "#f7f6f2", borderRadius: 8 }}>
-                <label style={{ position: "relative", width: 36, height: 20, display: "inline-block", flexShrink: 0 }}>
-                  <input type="checkbox" checked={state.mrbAutomatisch} onChange={e => set("mrbAutomatisch", e.target.checked)}
-                    style={{ opacity: 0, width: 0, height: 0 }} />
-                  <span style={{
-                    position: "absolute", inset: 0, background: state.mrbAutomatisch ? COLORS.success : "#ccc",
-                    borderRadius: 20, cursor: "pointer", transition: "background 0.2s",
-                  }} />
-                  <span style={{
-                    position: "absolute", top: 2, left: state.mrbAutomatisch ? 18 : 2,
-                    width: 16, height: 16, background: "#fff", borderRadius: "50%",
-                    transition: "left 0.2s", pointerEvents: "none",
-                  }} />
-                </label>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 500 }}>MRB kwartaalposten automatisch toevoegen</div>
-                  <div style={{ fontSize: 12, color: "#999" }}>
-                    {state.mrbAutomatisch
-                      ? `${mrbPosten.length} posten van ${fmt(mrb.kwartaal)} toegevoegd aan kostenlijst (niet bewerkbaar, op basis van schatting)`
-                      : `Voeg ${fmt(mrb.kwartaal)}/kwartaal automatisch toe aan je kostenlijst voor de hele bezitsperiode`
-                    }
-                  </div>
-                </div>
+
+              {/* Werkelijk bedrag invoeren */}
+              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: "#f7f6f2", borderRadius: 8, marginBottom: 10 }}>
+                <label style={{ fontSize: 13, color: "#666", flexShrink: 0 }}>Werkelijk bedrag per maand (€)</label>
+                <input type="number" placeholder="bijv. 180"
+                  value={state.mrbWerkelijkMaand}
+                  onChange={e => set("mrbWerkelijkMaand", e.target.value)}
+                  style={{ width: 110 }} />
+                {state.mrbWerkelijkMaand && (
+                  <button onClick={() => set("mrbWerkelijkMaand", "")}
+                    style={{ background: "none", border: "0.5px solid #ccc", borderRadius: 4, padding: "4px 8px", cursor: "pointer", fontSize: 12, color: "#999" }}>
+                    Wissen
+                  </button>
+                )}
               </div>
-              <div style={{ fontSize: 12, color: "#bbb", marginTop: 10 }}>
-                ⓘ Schatting op basis van {fmtN(state.gewichtKg)} kg, {state.brandstof}, provincie {state.provincie}. Exacte bedragen via belastingdienst.nl.
+
+              <Toggle
+                checked={state.mrbAutomatisch}
+                onChange={v => set("mrbAutomatisch", v)}
+                label="MRB kwartaalposten automatisch toevoegen"
+                sub={state.mrbAutomatisch
+                  ? `${mrbPosten.length} posten van ${fmt(mrbKwartaal)}/kwartaal toegevoegd aan kostenlijst`
+                  : `Voegt ${fmt(mrbKwartaal)}/kwartaal automatisch toe voor de hele bezitsperiode`}
+              />
+              <div style={{ fontSize: 12, color: "#bbb", marginTop: 6 }}>
+                ⓘ Schatting: {fmtN(state.gewichtKg)} kg · {state.brandstof} · {state.provincie}. Exacte bedragen via belastingdienst.nl.
               </div>
             </Card>
           )}
 
+          {/* Verzekering */}
+          <Card>
+            <SectionTitle>Verzekering</SectionTitle>
+            <Toggle
+              checked={state.verzekeringAutomatisch}
+              onChange={v => set("verzekeringAutomatisch", v)}
+              label="Verzekering automatisch splitsen in maandposten"
+              sub="Voer per jaar een jaarbedrag in — de app maakt 12 maandposten aan"
+            />
+            {state.verzekeringAutomatisch && (
+              <div style={{ marginTop: 10 }}>
+                {/* Ingevoerde jaren */}
+                {state.verzekeringJaren.length > 0 && (
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, marginBottom: 10 }}>
+                    <thead>
+                      <tr style={{ borderBottom: "0.5px solid #e8e6e0" }}>
+                        <th style={{ textAlign: "left", padding: "5px 8px", fontWeight: 500, color: "#bbb" }}>Jaar</th>
+                        <th style={{ textAlign: "left", padding: "5px 8px", fontWeight: 500, color: "#bbb" }}>Jaarbedrag</th>
+                        <th style={{ textAlign: "left", padding: "5px 8px", fontWeight: 500, color: "#bbb" }}>Per maand</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {state.verzekeringJaren.map(v => (
+                        <tr key={v.startJaar} style={{ borderBottom: "0.5px solid #f0ede8" }}>
+                          <td style={{ padding: "6px 8px", fontWeight: 500 }}>{v.startJaar}</td>
+                          <td style={{ padding: "6px 8px" }}>{fmt(v.bedrag)}</td>
+                          <td style={{ padding: "6px 8px", color: "#888" }}>{fmt(Math.round(v.bedrag / 12))}</td>
+                          <td style={{ padding: "6px 8px" }}>
+                            <button onClick={() => set("verzekeringJaren", state.verzekeringJaren.filter(x => x.startJaar !== v.startJaar))}
+                              style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.danger, fontSize: 14 }}>✕</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+                {/* Nieuw jaar toevoegen */}
+                <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <label style={{ fontSize: 12, color: "#999" }}>Jaar</label>
+                    <input type="number" value={nieuwVerzJaar} onChange={e => setNieuwVerzJaar(e.target.value)} style={{ width: 80 }} />
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <label style={{ fontSize: 12, color: "#999" }}>Jaarbedrag verzekering (€)</label>
+                    <input type="number" placeholder="bijv. 1200" value={nieuwVerzBedrag}
+                      onChange={e => setNieuwVerzBedrag(e.target.value)}
+                      onKeyDown={e => e.key === "Enter" && voegVerzJaarToe()} style={{ width: 160 }} />
+                  </div>
+                  <button onClick={voegVerzJaarToe}
+                    style={{ background: COLORS.primary, color: "#fff", border: "none", borderRadius: 6, padding: "9px 14px", cursor: "pointer", fontWeight: 500 }}>
+                    + Toevoegen
+                  </button>
+                </div>
+                {verzPosten.length > 0 && (
+                  <div style={{ marginTop: 8, fontSize: 12, color: COLORS.success }}>
+                    ✓ {verzPosten.length} maandposten verzekering toegevoegd aan kostenlijst
+                  </div>
+                )}
+              </div>
+            )}
+          </Card>
+
+          {/* Samenvatting */}
           <Card>
             <SectionTitle>Kostensamenvatting</SectionTitle>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
@@ -499,7 +678,6 @@ export default function App() {
       {/* ══ TAB KOSTEN ══ */}
       {tab === "kosten" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-          {/* Toevoegen */}
           <Card>
             <SectionTitle>Kostenpost toevoegen</SectionTitle>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
@@ -533,7 +711,6 @@ export default function App() {
             </div>
           </Card>
 
-          {/* Categorieoverzicht + km */}
           <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
             <Card style={{ flex: 2, minWidth: 260 }}>
               <SectionTitle>Per categorie</SectionTitle>
@@ -545,7 +722,7 @@ export default function App() {
                     <span style={{ fontWeight: 600 }}>{fmt(c.totaal)}</span>
                   </div>
                   <div style={{ height: 7, background: "#f0ede8", borderRadius: 4 }}>
-                    <div style={{ height: 7, borderRadius: 4, width: `${(c.totaal/totaalKosten)*100}%`, background: c.variabel ? COLORS.accent : COLORS.primary }} />
+                    <div style={{ height: 7, borderRadius: 4, width: `${(c.totaal/(totaalKosten||1))*100}%`, background: c.variabel ? COLORS.accent : COLORS.primary }} />
                   </div>
                 </div>
               ))}
@@ -571,59 +748,35 @@ export default function App() {
             </Card>
           </div>
 
-          {/* Kostenlijst met inline bewerken */}
+          {/* Kostenlijst per jaar ingeklapt */}
           <Card>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.875rem" }}>
-              <SectionTitle style={{ margin: 0 }}>Alle kostenposten ({alleKosten.length}){mrbPosten.length > 0 && <span style={{ color: COLORS.success, fontWeight: 400 }}> waarvan {mrbPosten.length} MRB automatisch</span>}</SectionTitle>
+              <SectionTitle style={{ margin: 0 }}>Kostenposten per jaar — {alleKosten.length} posten · {fmt(totaalKosten)}</SectionTitle>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button onClick={() => setOpenJaren(new Set(jarenGesorteerd))}
+                  style={{ fontSize: 12, background: "none", border: "0.5px solid #e0ddd8", borderRadius: 4, padding: "3px 10px", cursor: "pointer", color: "#666" }}>
+                  Alles open
+                </button>
+                <button onClick={() => setOpenJaren(new Set())}
+                  style={{ fontSize: 12, background: "none", border: "0.5px solid #e0ddd8", borderRadius: 4, padding: "3px 10px", cursor: "pointer", color: "#666" }}>
+                  Alles dicht
+                </button>
+              </div>
             </div>
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                <thead>
-                  <tr style={{ borderBottom: "0.5px solid #e8e6e0" }}>
-                    {["Datum","Categorie","Bedrag","Km-stand","Omschrijving",""].map(h => (
-                      <th key={h} style={{ textAlign: "left", padding: "6px 8px", fontWeight: 500, color: "#bbb", whiteSpace: "nowrap" }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...alleKosten].sort((a,b) => (b.datum||"").localeCompare(a.datum||"")).map(k => {
-                    const cat = COST_CATEGORIES.find(c => c.id === k.categorie);
-                    if (editId === k.id) {
-                      return <EditRij key={k.id} kost={k} onSave={slaOpEdit} onCancel={() => setEditId(null)} />;
-                    }
-                    return (
-                      <tr key={k.id} style={{ borderBottom: "0.5px solid #f0ede8", background: k.automatisch ? "#f9fdf9" : "transparent" }}>
-                        <td style={{ padding: "7px 8px", color: "#888" }}>{k.datum}</td>
-                        <td style={{ padding: "7px 8px" }}>{cat?.icon} {cat?.label||k.categorie}</td>
-                        <td style={{ padding: "7px 8px", fontWeight: 500 }}>{fmt(k.bedrag)}</td>
-                        <td style={{ padding: "7px 8px", color: "#bbb" }}>{k.km ? fmtN(k.km) : "—"}</td>
-                        <td style={{ padding: "7px 8px", color: "#999" }}>
-                          {k.omschrijving||"—"}
-                          {k.automatisch && <span style={{ marginLeft: 6, fontSize: 11, color: COLORS.success }}>auto</span>}
-                        </td>
-                        <td style={{ padding: "7px 8px", whiteSpace: "nowrap" }}>
-                          {!k.automatisch && (
-                            <>
-                              <button onClick={() => setEditId(k.id)}
-                                style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.primary, fontSize: 14, marginRight: 4 }} title="Bewerken">✏</button>
-                              <button onClick={() => set("kosten", state.kosten.filter(x => x.id !== k.id))}
-                                style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.danger, fontSize: 14 }} title="Verwijderen">✕</button>
-                            </>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-                <tfoot>
-                  <tr style={{ borderTop: "1px solid #e8e6e0" }}>
-                    <td colSpan={2} style={{ padding: "8px 8px", fontWeight: 600 }}>Totaal</td>
-                    <td style={{ padding: "8px 8px", fontWeight: 600 }}>{fmt(totaalKosten)}</td>
-                    <td colSpan={3} />
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
+            {jarenGesorteerd.length === 0 && <div style={{ color: "#bbb", fontSize: 14 }}>Nog geen kosten ingevoerd.</div>}
+            {jarenGesorteerd.map(jaar => (
+              <JaarGroep
+                key={jaar}
+                jaar={jaar}
+                posten={groepenPerJaar[jaar]}
+                openJaren={openJaren}
+                setOpenJaren={setOpenJaren}
+                editId={editId}
+                setEditId={setEditId}
+                onSave={slaOpEdit}
+                onVerwijder={id => set("kosten", state.kosten.filter(k => k.id !== id))}
+              />
+            ))}
           </Card>
         </div>
       )}
@@ -634,8 +787,7 @@ export default function App() {
           <Card>
             <SectionTitle>Cumulatieve kosten: eigen auto vs. privé lease</SectionTitle>
             <div style={{ fontSize: 13, color: "#999", marginBottom: 14 }}>
-              Eigen auto: aankoopprijs {fmt(state.aankoopprijs)} + afschrijving + gemaakte kosten.
-              Lease: aanbetaling {fmt(state.leaseAanbetaling)} + {fmt(leasePrive)}/maand.
+              Eigen auto: aankoopprijs {fmt(state.aankoopprijs)} + afschrijving + gemaakte kosten. Lease: {fmt(leasePrive)}/maand.
             </div>
             <ResponsiveContainer width="100%" height={270}>
               <LineChart data={grafiekData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
@@ -652,18 +804,15 @@ export default function App() {
               const v = grafiekData[grafiekData.length-1]["Eigen auto"] - grafiekData[grafiekData.length-1]["Privé lease"];
               return (
                 <div style={{ marginTop: 12, padding: "10px 14px", background: v > 0 ? "#fdf3ef" : "#f0faf4", borderRadius: 8, fontSize: 13 }}>
-                  {v > 0
-                    ? `📊 Na ${Math.ceil(bezitsjaren)} jaar is eigen auto ${fmt(v)} duurder dan privé lease in dit scenario.`
-                    : `📊 Na ${Math.ceil(bezitsjaren)} jaar is eigen auto ${fmt(Math.abs(v))} goedkoper dan privé lease in dit scenario.`}
+                  {v > 0 ? `📊 Na ${Math.ceil(bezitsjaren)} jaar is eigen auto ${fmt(v)} duurder dan privé lease.`
+                         : `📊 Na ${Math.ceil(bezitsjaren)} jaar is eigen auto ${fmt(Math.abs(v))} goedkoper dan privé lease.`}
                 </div>
               );
             })()}
           </Card>
-
           <Card>
             <SectionTitle>Gemaakte kosten per jaar</SectionTitle>
-            {jaarBarData.length === 0
-              ? <div style={{ color: "#bbb", fontSize: 14 }}>Nog geen kosten ingevoerd.</div>
+            {jaarBarData.length === 0 ? <div style={{ color: "#bbb", fontSize: 14 }}>Nog geen kosten.</div>
               : <ResponsiveContainer width="100%" height={220}>
                   <BarChart data={jaarBarData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0ede8" vertical={false} />
@@ -675,7 +824,6 @@ export default function App() {
                 </ResponsiveContainer>
             }
           </Card>
-
           <Card>
             <SectionTitle>Afschrijving voertuigwaarde</SectionTitle>
             <ResponsiveContainer width="100%" height={220}>
@@ -689,9 +837,6 @@ export default function App() {
                 <Line type="monotone" dataKey="waarde" stroke={COLORS.success} strokeWidth={2.5} dot={{ r: 3 }} name="Waarde" />
               </LineChart>
             </ResponsiveContainer>
-            <div style={{ fontSize: 12, color: "#bbb", marginTop: 8 }}>
-              Degressieve curve — meer verlies in de eerste jaren. Verticale stippellijn = huidige positie.
-            </div>
           </Card>
         </div>
       )}
@@ -703,9 +848,9 @@ export default function App() {
             <Card style={{ flex: 1, minWidth: 240 }}>
               <SectionTitle>Lease parameters</SectionTitle>
               <Row label="Cataloguswaarde" wide><input type="number" value={state.cataloguswaarde} onChange={e => set("cataloguswaarde", Number(e.target.value))} style={{ flex: 1 }} /></Row>
-              <Row label="Looptijd (mnd)" wide><input type="number" value={state.leaseLooptijd} onChange={e => set("leaseLooptijd", Number(e.target.value))} style={{ flex: 1 }} /></Row>
-              <Row label="Km per jaar" wide><input type="number" value={state.leaseKm} onChange={e => set("leaseKm", Number(e.target.value))} style={{ flex: 1 }} /></Row>
-              <Row label="Aanbetaling" wide><input type="number" value={state.leaseAanbetaling} onChange={e => set("leaseAanbetaling", Number(e.target.value))} style={{ flex: 1 }} /></Row>
+              <Row label="Looptijd (mnd)"  wide><input type="number" value={state.leaseLooptijd}   onChange={e => set("leaseLooptijd",   Number(e.target.value))} style={{ flex: 1 }} /></Row>
+              <Row label="Km per jaar"     wide><input type="number" value={state.leaseKm}          onChange={e => set("leaseKm",          Number(e.target.value))} style={{ flex: 1 }} /></Row>
+              <Row label="Aanbetaling"     wide><input type="number" value={state.leaseAanbetaling} onChange={e => set("leaseAanbetaling", Number(e.target.value))} style={{ flex: 1 }} /></Row>
             </Card>
             <Card style={{ flex: 1, minWidth: 240 }}>
               <SectionTitle>Lease uitkomst</SectionTitle>
@@ -728,18 +873,15 @@ export default function App() {
           <Card>
             <SectionTitle>Vergelijking over {state.leaseLooptijd} maanden</SectionTitle>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: "1.25rem" }}>
-              <MetricCard label="Eigen auto /mnd"  value={fmt(eigenMaand)}  sub="incl. afschr. & kosten" />
-              <MetricCard label="Privé lease /mnd" value={fmt(leasePrive)}  sub="all-in schatting" color={COLORS.lease} />
+              <MetricCard label="Eigen auto /mnd"  value={fmt(eigenMaand)} sub="incl. afschr. & kosten" />
+              <MetricCard label="Privé lease /mnd" value={fmt(leasePrive)} sub="all-in schatting" color={COLORS.lease} />
               <MetricCard label="Verschil /mnd"
                 value={fmt(Math.abs(eigenMaand - leasePrive))}
                 sub={eigenMaand > leasePrive ? "eigen auto is duurder" : "lease is duurder"}
                 color={eigenMaand > leasePrive ? COLORS.danger : COLORS.success}
               />
             </div>
-            {[
-              { label: "Eigen auto",  maand: eigenMaand, color: COLORS.primary },
-              { label: "Privé lease", maand: leasePrive, color: COLORS.lease },
-            ].map(item => {
+            {[{ label: "Eigen auto", maand: eigenMaand, color: COLORS.primary }, { label: "Privé lease", maand: leasePrive, color: COLORS.lease }].map(item => {
               const max = Math.max(eigenMaand, leasePrive, 1);
               return (
                 <div key={item.label} style={{ marginBottom: 16 }}>
@@ -760,9 +902,7 @@ export default function App() {
                 <span>📝 Privé lease: <b>{fmtC(leaseKmKost)}/km</b></span>
               </div>
             </div>
-            <div style={{ marginTop: 10, fontSize: 12, color: "#bbb" }}>
-              ⚠️ Leasebedragen zijn schattingen. Vraag altijd een offerte op bij een leasemaatschappij.
-            </div>
+            <div style={{ marginTop: 10, fontSize: 12, color: "#bbb" }}>⚠️ Leasebedragen zijn schattingen. Vraag altijd een offerte op bij een leasemaatschappij.</div>
           </Card>
         </div>
       )}
@@ -792,13 +932,11 @@ export default function App() {
           </Card>
           <Card>
             <SectionTitle>Data beheer</SectionTitle>
-            <div style={{ fontSize: 13, color: "#999", marginBottom: 12 }}>
-              Alle gegevens worden automatisch opgeslagen in je browser (localStorage).
-            </div>
-            <button
-              onClick={() => { if (window.confirm("Weet je zeker dat je alle data wilt wissen?")) { localStorage.removeItem(STORAGE_KEY); setState(defaultState()); }}}
-              style={{ background: "none", border: `0.5px solid ${COLORS.danger}`, color: COLORS.danger, borderRadius: 6, padding: "8px 16px", cursor: "pointer", fontSize: 13 }}
-            >Alle data wissen</button>
+            <div style={{ fontSize: 13, color: "#999", marginBottom: 12 }}>Alle gegevens worden automatisch opgeslagen in je browser (localStorage).</div>
+            <button onClick={() => { if (window.confirm("Weet je zeker dat je alle data wilt wissen?")) { localStorage.removeItem(STORAGE_KEY); setState(defaultState()); }}}
+              style={{ background: "none", border: `0.5px solid ${COLORS.danger}`, color: COLORS.danger, borderRadius: 6, padding: "8px 16px", cursor: "pointer", fontSize: 13 }}>
+              Alle data wissen
+            </button>
           </Card>
         </div>
       )}
