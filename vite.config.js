@@ -1,4 +1,4 @@
-// AutoKosten v2 fix1
+// AutoKosten v2 fix1 
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
