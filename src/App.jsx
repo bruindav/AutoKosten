@@ -320,6 +320,7 @@ export default function App() {
   const [nieuwKost, setNieuwKost]   = useState({ datum: "", categorie: "brandstof", bedrag: "", km: "", omschrijving: "" });
   const [editId, setEditId]         = useState(null);
   const [openJaren, setOpenJaren]   = useState(() => new Set([String(new Date().getFullYear())]));
+  const [analyseJaar, setAnalyseJaar] = useState("tot_nu");
   const [importText, setImportText] = useState("");
   const [importError, setImportError] = useState("");
   const [saveFlash, setSaveFlash]   = useState(false);
@@ -711,42 +712,141 @@ export default function App() {
             </div>
           </Card>
 
-          <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
-            <Card style={{ flex: 2, minWidth: 260 }}>
-              <SectionTitle>Per categorie</SectionTitle>
-              {kostPerCat.length === 0 && <div style={{ color: "#bbb", fontSize: 14 }}>Nog geen kosten ingevoerd.</div>}
-              {kostPerCat.map(c => (
-                <div key={c.id} style={{ marginBottom: 12 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
-                    <span>{c.icon} {c.label} <span style={{ fontSize: 11, color: c.variabel ? COLORS.accent : "#bbb", marginLeft: 4 }}>{c.variabel ? "variabel" : "vast"}</span></span>
-                    <span style={{ fontWeight: 600 }}>{fmt(c.totaal)}</span>
+          {/* ── Jaar-selector voor analyse ── */}
+          {(() => {
+            const nuJaar = String(new Date().getFullYear());
+            const verkoopJaarStr = String(verkoopDt.getFullYear());
+            // Alle jaren van aankoop t/m verwachte verkoop
+            const alleJaren = [];
+            for (let j = aankoopDt.getFullYear(); j <= verkoopDt.getFullYear(); j++) alleJaren.push(String(j));
+            // Periodes: elk jaar + "tot nu" + "alles tot verkoop"
+            const periodes = [
+              ...alleJaren,
+              "tot_nu",
+              "tot_verkoop",
+            ];
+            const periodeLabel = (p) => {
+              if (p === "tot_nu")      return "Tot nu";
+              if (p === "tot_verkoop") return "Hele periode";
+              return p;
+            };
+
+            // Filter kosten voor geselecteerde periode
+            const kostenVoorPeriode = (periode) => {
+              if (periode === "tot_nu")      return alleKosten.filter(k => k.datum && k.datum <= nu.toISOString().slice(0,10));
+              if (periode === "tot_verkoop") return alleKosten;
+              return alleKosten.filter(k => k.datum?.slice(0,4) === periode);
+            };
+
+            // Km voor periode
+            const kmVoorPeriode = (periode) => {
+              if (periode === "tot_nu")      return Math.max(state.jaarlijkseKm * verlopenJaren, 1);
+              if (periode === "tot_verkoop") return Math.max(state.jaarlijkseKm * bezitsjaren, 1);
+              const jaarNum = Number(periode);
+              const start   = new Date(Math.max(aankoopDt, new Date(jaarNum, 0, 1)));
+              const einde   = new Date(Math.min(verkoopDt, new Date(jaarNum, 11, 31)));
+              const fractie = Math.max((einde - start) / (365.25 * 864e5), 0);
+              return Math.max(state.jaarlijkseKm * fractie, 1);
+            };
+
+            // Afschrijving voor periode
+            const afschrVoorPeriode = (periode) => {
+              if (periode === "tot_nu")      return afschrJaar * verlopenJaren;
+              if (periode === "tot_verkoop") return totaleAfschr;
+              return afschrJaar; // per jaar = gelijk
+            };
+
+            const sel       = analyseJaar;
+            const kp        = kostenVoorPeriode(sel);
+            const totKp     = kp.reduce((s, k) => s + Number(k.bedrag), 0);
+            const kmKp      = kmVoorPeriode(sel);
+            const afschrKp  = afschrVoorPeriode(sel);
+            const varKp     = kp.filter(k => COST_CATEGORIES.find(c => c.id === k.categorie)?.vastKp).reduce((s, k) => s + Number(k.bedrag), 0);
+            const varKpReal = kp.filter(k => COST_CATEGORIES.find(c => c.id === k.categorie)?.variabel).reduce((s, k) => s + Number(k.bedrag), 0);
+            const vastKpReal= totKp - varKpReal;
+            const catKp     = COST_CATEGORIES
+              .map(c => ({ ...c, totaal: kp.filter(k => k.categorie === c.id).reduce((s, k) => s + Number(k.bedrag), 0) }))
+              .filter(c => c.totaal > 0).sort((a,b) => b.totaal - a.totaal);
+
+            const kmVastKp     = (vastKpReal + afschrKp) / kmKp;
+            const kmVariabelKp = varKpReal / kmKp;
+            const kmTotaalKp   = (totKp + afschrKp) / kmKp;
+
+            return (
+              <Card>
+                {/* Periode-knoppen */}
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: "1rem", flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 12, color: "#999", flexShrink: 0 }}>Periode:</span>
+                  {periodes.map(p => (
+                    <button key={p} onClick={() => setAnalyseJaar(p)}
+                      style={{
+                        padding: "4px 12px", fontSize: 12, borderRadius: 20,
+                        border: analyseJaar === p ? `1.5px solid ${COLORS.primary}` : "0.5px solid #e0ddd8",
+                        background: analyseJaar === p ? COLORS.primary : "#fff",
+                        color: analyseJaar === p ? "#fff" : "#666",
+                        cursor: "pointer", fontWeight: analyseJaar === p ? 600 : 400,
+                      }}>{periodeLabel(p)}</button>
+                  ))}
+                </div>
+
+                {/* Samenvatting periode */}
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: "1.25rem" }}>
+                  <MetricCard label="Kosten"      value={fmt(totKp)}    sub={`${kp.length} posten`} />
+                  <MetricCard label="Afschrijving" value={fmt(afschrKp)} sub="in deze periode" />
+                  <MetricCard label="Km gereden"   value={fmtN(kmKp)}    sub="geschat" />
+                  <MetricCard label="Totaal/mnd"   value={fmt((totKp + afschrKp) / Math.max(
+                    sel === "tot_nu" ? verlopenJaren * 12 :
+                    sel === "tot_verkoop" ? bezitsjaren * 12 : 12, 1))}
+                    sub="incl. afschr." color={COLORS.accent} />
+                </div>
+
+                <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap" }}>
+                  {/* Per categorie */}
+                  <div style={{ flex: 2, minWidth: 220 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "#bbb", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10 }}>Per categorie</div>
+                    {catKp.length === 0 && <div style={{ color: "#bbb", fontSize: 13 }}>Geen kosten in deze periode.</div>}
+                    {catKp.map(c => (
+                      <div key={c.id} style={{ marginBottom: 10 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 3 }}>
+                          <span>{c.icon} {c.label}
+                            <span style={{ fontSize: 11, color: c.variabel ? COLORS.accent : "#bbb", marginLeft: 4 }}>{c.variabel ? "variabel" : "vast"}</span>
+                          </span>
+                          <span style={{ fontWeight: 600 }}>{fmt(c.totaal)}</span>
+                        </div>
+                        <div style={{ height: 6, background: "#f0ede8", borderRadius: 3 }}>
+                          <div style={{ height: 6, borderRadius: 3, width: `${(c.totaal / (totKp || 1)) * 100}%`, background: c.variabel ? COLORS.accent : COLORS.primary }} />
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <div style={{ height: 7, background: "#f0ede8", borderRadius: 4 }}>
-                    <div style={{ height: 7, borderRadius: 4, width: `${(c.totaal/(totaalKosten||1))*100}%`, background: c.variabel ? COLORS.accent : COLORS.primary }} />
+
+                  {/* Divider */}
+                  <div style={{ width: "0.5px", background: "#e8e6e0", flexShrink: 0 }} />
+
+                  {/* Per km */}
+                  <div style={{ flex: 1, minWidth: 180 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "#bbb", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10 }}>Kosten per km</div>
+                    {[
+                      { label: "Vast (incl. afschr.)", value: kmVastKp,     color: COLORS.primary },
+                      { label: "Variabel",              value: kmVariabelKp, color: COLORS.accent },
+                      { label: "Totaal",                value: kmTotaalKp,   color: COLORS.danger },
+                    ].map(item => (
+                      <div key={item.label} style={{ marginBottom: 14 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 3 }}>
+                          <span style={{ color: "#666" }}>{item.label}</span>
+                          <span style={{ fontWeight: 600, color: item.color }}>{fmtC(item.value)}/km</span>
+                        </div>
+                        <div style={{ height: 6, background: "#f0ede8", borderRadius: 3 }}>
+                          <div style={{ height: 6, borderRadius: 3, width: `${(item.value / (kmTotaalKp || 1)) * 100}%`, background: item.color }} />
+                        </div>
+                      </div>
+                    ))}
+                    <div style={{ fontSize: 12, color: "#bbb", marginTop: 4 }}>{fmtN(kmKp)} km in periode</div>
                   </div>
                 </div>
-              ))}
-            </Card>
-            <Card style={{ flex: 1, minWidth: 200 }}>
-              <SectionTitle>Kosten per km</SectionTitle>
-              {[
-                { label: "Vast (incl. afschr.)", value: kmVast,     color: COLORS.primary },
-                { label: "Variabel",              value: kmVariabel, color: COLORS.accent },
-                { label: "Totaal",                value: kmTotaal,   color: COLORS.danger },
-              ].map(item => (
-                <div key={item.label} style={{ marginBottom: 14 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 3 }}>
-                    <span style={{ color: "#666" }}>{item.label}</span>
-                    <span style={{ fontWeight: 600, color: item.color }}>{fmtC(item.value)}/km</span>
-                  </div>
-                  <div style={{ height: 6, background: "#f0ede8", borderRadius: 3 }}>
-                    <div style={{ height: 6, borderRadius: 3, width: `${(item.value/(kmTotaal||1))*100}%`, background: item.color }} />
-                  </div>
-                </div>
-              ))}
-              <div style={{ fontSize: 12, color: "#bbb", marginTop: 4 }}>Op basis van {fmtN(geredenKm)} gereden km</div>
-            </Card>
-          </div>
+              </Card>
+            );
+          })()}
 
           {/* Kostenlijst per jaar ingeklapt */}
           <Card>
