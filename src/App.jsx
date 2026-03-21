@@ -38,24 +38,48 @@ const MRB_OPCENTEN = {
   "gelderland": 91.5, "utrecht": 112.8, "noord-holland": 116.8, "zuid-holland": 101.0,
   "zeeland": 70.2, "noord-brabant": 96.3, "limburg": 92.4, "flevoland": 88.5,
 };
-const MRB_BASIS_PER_100KG = 57.98; // per kwartaal, benzine 2024
 
 const fmt  = (v) => new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(v || 0);
 const fmtC = (v) => new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v || 0);
 const fmtN = (v) => new Intl.NumberFormat("nl-NL").format(Math.round(v || 0));
 
+// MRB staffel 2024 benzine (kwartaalbedrag) - bron: belastingdienst.nl
+function mrbBenzineKwartaal(kg) {
+  const tabel = [
+    [500,40],[600,55],[700,67],[800,79],[900,91],[1000,103],
+    [1100,116],[1200,128],[1300,140],[1400,153],[1500,165],
+    [1600,177],[1700,190],[1800,202],[1900,214],[2000,227],
+    [2100,239],[2500,299],
+  ];
+  const gewicht = Number(kg);
+  for (const [grens, bedrag] of tabel) {
+    if (gewicht <= grens) return bedrag;
+  }
+  return 299 + Math.ceil((gewicht - 2500) / 100) * 12;
+}
+
 function berekenMRB(gewichtKg, brandstof, provincie) {
-  if (!gewichtKg || gewichtKg < 1) return null;
+  if (!gewichtKg || Number(gewichtKg) < 100) return null;
   const prov     = provincie?.toLowerCase() || "gelderland";
   const opcenten = MRB_OPCENTEN[prov] ?? 91.5;
-  const klasse   = Math.ceil(Number(gewichtKg) / 100);
-  let basis      = klasse * MRB_BASIS_PER_100KG;
   const bf       = (brandstof || "").toLowerCase();
-  if (bf.includes("elektrisch")) basis = 0;
-  else if (bf.includes("diesel")) basis *= 1.25;
-  else if (bf.includes("lpg"))    basis *= 0.85;
+
+  let basis;
+  if (bf.includes("elektrisch") || bf.includes("waterstof")) {
+    basis = 0;
+  } else {
+    basis = mrbBenzineKwartaal(gewichtKg);
+    if (bf.includes("diesel"))   basis += 96;  // dieseltoeslag 2024 per kwartaal
+    else if (bf.includes("lpg")) basis += 20;  // lpg toeslag
+  }
+
   const metOp = basis * (1 + opcenten / 100);
-  return { kwartaal: Math.round(metOp), jaarlijks: Math.round(metOp * 4), basisBedrag: Math.round(basis), opcenten };
+  return {
+    kwartaal:    Math.round(metOp),
+    jaarlijks:   Math.round(metOp * 4),
+    basisBedrag: Math.round(basis),
+    opcenten,
+  };
 }
 
 function berekenLeasePrive(catalogus, looptijdMnd, kmPerJaar, aanbetaling) {
