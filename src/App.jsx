@@ -1,6 +1,5 @@
-// AutoKosten v2.0 - fix1
-// Particulier autokosten analyse met lease-vergelijk
-// Uitbreidingen: localStorage, MRB schatting, kosten vs lease grafiek
+// AutoKosten v2 fix4
+// Nieuw: inline bewerken kostenposten, automatische MRB kwartaalposten
 
 import { useState, useEffect } from "react";
 import {
@@ -8,16 +7,12 @@ import {
   Tooltip, Legend, ResponsiveContainer, ReferenceLine
 } from "recharts";
 
-const APP_VERSION = "v2 fix1";
+const APP_VERSION = "v2 fix4";
 const STORAGE_KEY = "autokosten_v2";
 
 const COLORS = {
-  primary: "#1B4F72",
-  accent:  "#E67E22",
-  success: "#27AE60",
-  danger:  "#E74C3C",
-  lease:   "#8E44AD",
-  muted:   "#7F8C8D",
+  primary: "#1B4F72", accent: "#E67E22", success: "#27AE60",
+  danger: "#E74C3C", lease: "#8E44AD", muted: "#7F8C8D",
 };
 
 const COST_CATEGORIES = [
@@ -32,7 +27,6 @@ const COST_CATEGORIES = [
   { id: "overig",         label: "Overig",               variabel: false, icon: "📦" },
 ];
 
-// MRB opcenten 2024 per provincie
 const MRB_OPCENTEN = {
   "groningen": 105.7, "friesland": 77.8, "drenthe": 83.2, "overijssel": 103.3,
   "gelderland": 91.5, "utrecht": 112.8, "noord-holland": 116.8, "zuid-holland": 101.0,
@@ -43,7 +37,6 @@ const fmt  = (v) => new Intl.NumberFormat("nl-NL", { style: "currency", currency
 const fmtC = (v) => new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v || 0);
 const fmtN = (v) => new Intl.NumberFormat("nl-NL").format(Math.round(v || 0));
 
-// MRB staffel 2024 benzine (kwartaalbedrag) - bron: belastingdienst.nl
 function mrbBenzineKwartaal(kg) {
   const tabel = [
     [500,40],[600,55],[700,67],[800,79],[900,91],[1000,103],
@@ -51,42 +44,58 @@ function mrbBenzineKwartaal(kg) {
     [1600,177],[1700,190],[1800,202],[1900,214],[2000,227],
     [2100,239],[2500,299],
   ];
-  const gewicht = Number(kg);
-  for (const [grens, bedrag] of tabel) {
-    if (gewicht <= grens) return bedrag;
-  }
-  return 299 + Math.ceil((gewicht - 2500) / 100) * 12;
+  const g = Number(kg);
+  for (const [grens, bedrag] of tabel) { if (g <= grens) return bedrag; }
+  return 299 + Math.ceil((g - 2500) / 100) * 12;
 }
 
 function berekenMRB(gewichtKg, brandstof, provincie) {
   if (!gewichtKg || Number(gewichtKg) < 100) return null;
-  const prov     = provincie?.toLowerCase() || "gelderland";
-  const opcenten = MRB_OPCENTEN[prov] ?? 91.5;
-  const bf       = (brandstof || "").toLowerCase();
-
-  let basis;
-  if (bf.includes("elektrisch") || bf.includes("waterstof")) {
-    basis = 0;
-  } else {
+  const opcenten = MRB_OPCENTEN[provincie?.toLowerCase()] ?? 91.5;
+  const bf = (brandstof || "").toLowerCase();
+  let basis = 0;
+  if (!bf.includes("elektrisch") && !bf.includes("waterstof")) {
     basis = mrbBenzineKwartaal(gewichtKg);
-    if (bf.includes("diesel"))   basis += 96;  // dieseltoeslag 2024 per kwartaal
-    else if (bf.includes("lpg")) basis += 20;  // lpg toeslag
+    if (bf.includes("diesel"))   basis += 96;
+    else if (bf.includes("lpg")) basis += 20;
   }
-
   const metOp = basis * (1 + opcenten / 100);
-  return {
-    kwartaal:    Math.round(metOp),
-    jaarlijks:   Math.round(metOp * 4),
-    basisBedrag: Math.round(basis),
-    opcenten,
-  };
+  return { kwartaal: Math.round(metOp), jaarlijks: Math.round(metOp * 4), basisBedrag: Math.round(basis), opcenten };
+}
+
+// Genereer MRB kwartaalposten voor een periode
+function genereerMrbPosten(aankoopdatum, verkoopdatum, mrbKwartaal) {
+  if (!mrbKwartaal || mrbKwartaal <= 0) return [];
+  const start  = new Date(aankoopdatum);
+  const einde  = new Date(verkoopdatum);
+  const posten = [];
+  // Eerste betaaldag = 1e dag van eerstvolgende kwartaal na aankoop
+  const d = new Date(start);
+  d.setDate(1);
+  d.setMonth(Math.ceil((d.getMonth()) / 3) * 3); // volgende kwartaalmaand: 0,3,6,9
+  if (d <= start) d.setMonth(d.getMonth() + 3);
+
+  while (d <= einde) {
+    const datumStr = d.toISOString().slice(0, 10);
+    posten.push({
+      id:           `mrb_${datumStr}`,
+      datum:        datumStr,
+      categorie:    "wegenbelasting",
+      bedrag:       mrbKwartaal,
+      km:           null,
+      omschrijving: "MRB kwartaal (automatisch)",
+      automatisch:  true,
+    });
+    d.setMonth(d.getMonth() + 3);
+  }
+  return posten;
 }
 
 function berekenLeasePrive(catalogus, looptijdMnd, kmPerJaar, aanbetaling) {
-  const restwaarde  = catalogus * Math.max(0.15, 0.55 - looptijdMnd * 0.005);
-  const afschr      = (catalogus - (aanbetaling || 0) - restwaarde) / looptijdMnd;
-  const rente       = (catalogus * 0.038) / 12;
-  const onderhoud   = 55 + (kmPerJaar / 12) * 0.022;
+  const restwaarde = catalogus * Math.max(0.15, 0.55 - looptijdMnd * 0.005);
+  const afschr     = (catalogus - (aanbetaling || 0) - restwaarde) / looptijdMnd;
+  const rente      = (catalogus * 0.038) / 12;
+  const onderhoud  = 55 + (kmPerJaar / 12) * 0.022;
   const verzekering = catalogus * 0.0017;
   return Math.max(Math.round(afschr + rente + onderhoud + verzekering), 199);
 }
@@ -107,14 +116,8 @@ function defaultState() {
     verwachteVerkoopdatum: "2027-01-01", verwachtVerkoopprijs: 12000,
     jaarlijkseKm: 15000, cataloguswaarde: 30000,
     leaseLooptijd: 48, leaseKm: 15000, leaseAanbetaling: 0,
-    kosten: [
-      { id: 1, datum: "2022-06-01", categorie: "verzekering",    bedrag: 900,  km: null,  omschrijving: "Jaarlijkse premie" },
-      { id: 2, datum: "2022-06-15", categorie: "wegenbelasting", bedrag: 480,  km: null,  omschrijving: "MRB kwartalen" },
-      { id: 3, datum: "2022-09-10", categorie: "onderhoud",      bedrag: 320,  km: 15000, omschrijving: "Grote beurt" },
-      { id: 4, datum: "2023-01-15", categorie: "brandstof",      bedrag: 2200, km: 15000, omschrijving: "Brandstof jaarlijks" },
-      { id: 5, datum: "2023-06-01", categorie: "verzekering",    bedrag: 950,  km: null,  omschrijving: "Jaarlijkse premie" },
-      { id: 6, datum: "2024-03-20", categorie: "banden",         bedrag: 480,  km: 45000, omschrijving: "4 nieuwe banden" },
-    ],
+    mrbAutomatisch: false,
+    kosten: [],
   };
 }
 
@@ -166,12 +169,42 @@ const CustomTooltip = ({ active, payload, label }) => {
   return (
     <div style={{ background: "#fff", border: "0.5px solid #ddd", borderRadius: 8, padding: "8px 12px", fontSize: 13 }}>
       <div style={{ fontWeight: 500, marginBottom: 4 }}>{label}</div>
-      {payload.map(p => (
-        <div key={p.name} style={{ color: p.color, marginBottom: 2 }}>{p.name}: {fmt(p.value)}</div>
-      ))}
+      {payload.map(p => <div key={p.name} style={{ color: p.color, marginBottom: 2 }}>{p.name}: {fmt(p.value)}</div>)}
     </div>
   );
 };
+
+// Inline edit rij voor een kostenpost
+function EditRij({ kost, onSave, onCancel }) {
+  const [edit, setEdit] = useState({ ...kost, bedrag: String(kost.bedrag), km: kost.km ? String(kost.km) : "" });
+  return (
+    <tr style={{ background: "#fffbf5", borderBottom: "0.5px solid #f0ede8" }}>
+      <td style={{ padding: "4px 4px" }}>
+        <input type="date" value={edit.datum} onChange={e => setEdit(p => ({ ...p, datum: e.target.value }))} style={{ width: 130 }} />
+      </td>
+      <td style={{ padding: "4px 4px" }}>
+        <select value={edit.categorie} onChange={e => setEdit(p => ({ ...p, categorie: e.target.value }))} style={{ width: 160 }}>
+          {COST_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.icon} {c.label}</option>)}
+        </select>
+      </td>
+      <td style={{ padding: "4px 4px" }}>
+        <input type="number" value={edit.bedrag} onChange={e => setEdit(p => ({ ...p, bedrag: e.target.value }))} style={{ width: 80 }} />
+      </td>
+      <td style={{ padding: "4px 4px" }}>
+        <input type="number" placeholder="—" value={edit.km} onChange={e => setEdit(p => ({ ...p, km: e.target.value }))} style={{ width: 90 }} />
+      </td>
+      <td style={{ padding: "4px 4px" }}>
+        <input value={edit.omschrijving} onChange={e => setEdit(p => ({ ...p, omschrijving: e.target.value }))} style={{ width: "100%" }} />
+      </td>
+      <td style={{ padding: "4px 4px", whiteSpace: "nowrap" }}>
+        <button onClick={() => onSave({ ...edit, bedrag: Number(edit.bedrag), km: edit.km ? Number(edit.km) : null })}
+          style={{ background: COLORS.success, color: "#fff", border: "none", borderRadius: 4, padding: "4px 10px", cursor: "pointer", marginRight: 4, fontSize: 12 }}>✓</button>
+        <button onClick={onCancel}
+          style={{ background: "none", border: "0.5px solid #ccc", borderRadius: 4, padding: "4px 8px", cursor: "pointer", fontSize: 12 }}>✕</button>
+      </td>
+    </tr>
+  );
+}
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
@@ -187,6 +220,7 @@ export default function App() {
   const [rdwError, setRdwError]     = useState("");
   const [rdwRaw, setRdwRaw]         = useState(null);
   const [nieuwKost, setNieuwKost]   = useState({ datum: "", categorie: "brandstof", bedrag: "", km: "", omschrijving: "" });
+  const [editId, setEditId]         = useState(null);   // id van rij in bewerking
   const [importText, setImportText] = useState("");
   const [importError, setImportError] = useState("");
   const [saveFlash, setSaveFlash]   = useState(false);
@@ -202,7 +236,7 @@ export default function App() {
 
   const set = (key, val) => setState(s => ({ ...s, [key]: val }));
 
-  // RDW
+  // RDW lookup
   const handleLookup = async () => {
     setRdwLoading(true); setRdwError("");
     try {
@@ -234,11 +268,19 @@ export default function App() {
   const totaleKm      = Math.round(state.jaarlijkseKm * bezitsjaren);
   const geredenKm     = Math.max(state.jaarlijkseKm * verlopenJaren, 1);
 
-  const totaalKosten  = state.kosten.reduce((s, k) => s + Number(k.bedrag), 0);
+  const mrb = berekenMRB(state.gewichtKg, state.brandstof, state.provincie);
+
+  // Combineer handmatige + automatische MRB posten
+  const mrbPosten = state.mrbAutomatisch && mrb
+    ? genereerMrbPosten(state.aankoopdatum, state.verwachteVerkoopdatum, mrb.kwartaal)
+    : [];
+  const alleKosten = [...state.kosten, ...mrbPosten];
+
+  const totaalKosten  = alleKosten.reduce((s, k) => s + Number(k.bedrag), 0);
   const totaleAfschr  = state.aankoopprijs - state.verwachtVerkoopprijs;
   const afschrJaar    = totaleAfschr / bezitsjaren;
 
-  const variabelTotaal = state.kosten
+  const variabelTotaal = alleKosten
     .filter(k => COST_CATEGORIES.find(c => c.id === k.categorie)?.variabel)
     .reduce((s, k) => s + Number(k.bedrag), 0);
   const vastTotaal = totaalKosten - variabelTotaal;
@@ -248,18 +290,16 @@ export default function App() {
   const kmTotaal   = (totaalKosten + totaleAfschr) / geredenKm;
   const eigenMaand = (totaalKosten + afschrJaar) / Math.max(verlopenJaren * 12, 1);
 
-  const mrb        = berekenMRB(state.gewichtKg, state.brandstof, state.provincie);
-  const leasePrive = berekenLeasePrive(state.cataloguswaarde, state.leaseLooptijd, state.leaseKm, state.leaseAanbetaling);
-  const leaseKmKost= (leasePrive * state.leaseLooptijd + state.leaseAanbetaling) / (state.leaseKm * state.leaseLooptijd / 12);
+  const leasePrive  = berekenLeasePrive(state.cataloguswaarde, state.leaseLooptijd, state.leaseKm, state.leaseAanbetaling);
+  const leaseKmKost = (leasePrive * state.leaseLooptijd + state.leaseAanbetaling) / (state.leaseKm * state.leaseLooptijd / 12);
 
   // Grafiekdata
   const kostenPerJaar = {};
-  state.kosten.forEach(k => { const j = k.datum?.slice(0,4); if (j) kostenPerJaar[j] = (kostenPerJaar[j]||0)+Number(k.bedrag); });
+  alleKosten.forEach(k => { const j = k.datum?.slice(0,4); if (j) kostenPerJaar[j] = (kostenPerJaar[j]||0)+Number(k.bedrag); });
 
   const aankoopJaar = aankoopDt.getFullYear();
   const verkoopJaar = verkoopDt.getFullYear();
-  let cumEigen = state.aankoopprijs;
-  let cumLease = state.leaseAanbetaling;
+  let cumEigen = state.aankoopprijs, cumLease = state.leaseAanbetaling;
   const grafiekData = [];
   for (let j = aankoopJaar; j <= verkoopJaar; j++) {
     cumEigen += (kostenPerJaar[String(j)] || 0) + afschrJaar;
@@ -267,17 +307,28 @@ export default function App() {
     grafiekData.push({ jaar: String(j), "Eigen auto": Math.round(cumEigen), "Privé lease": Math.round(cumLease) });
   }
 
-  const jaarBarData  = Object.entries(kostenPerJaar).sort().map(([jaar, kosten]) => ({ jaar, kosten }));
-  const afschrData   = afschrijvingsCurve(state.aankoopprijs, state.verwachtVerkoopprijs, bezitsjaren);
-  const kostPerCat   = COST_CATEGORIES
-    .map(c => ({ ...c, totaal: state.kosten.filter(k => k.categorie === c.id).reduce((s, k) => s + Number(k.bedrag), 0) }))
+  const jaarBarData = Object.entries(kostenPerJaar).sort().map(([jaar, kosten]) => ({ jaar, kosten }));
+  const afschrData  = afschrijvingsCurve(state.aankoopprijs, state.verwachtVerkoopprijs, bezitsjaren);
+  const kostPerCat  = COST_CATEGORIES
+    .map(c => ({ ...c, totaal: alleKosten.filter(k => k.categorie === c.id).reduce((s, k) => s + Number(k.bedrag), 0) }))
     .filter(c => c.totaal > 0).sort((a,b) => b.totaal - a.totaal);
 
   // Kosten toevoegen
   const voegToe = () => {
     if (!nieuwKost.datum || !nieuwKost.bedrag) return;
-    set("kosten", [...state.kosten, { ...nieuwKost, id: Date.now(), bedrag: Number(nieuwKost.bedrag), km: nieuwKost.km ? Number(nieuwKost.km) : null }]);
+    set("kosten", [...state.kosten, {
+      ...nieuwKost, id: Date.now(),
+      bedrag: Number(nieuwKost.bedrag),
+      km: nieuwKost.km ? Number(nieuwKost.km) : null,
+      automatisch: false,
+    }]);
     setNieuwKost({ datum: "", categorie: "brandstof", bedrag: "", km: "", omschrijving: "" });
+  };
+
+  // Kosten opslaan na bewerking
+  const slaOpEdit = (gewijzigd) => {
+    set("kosten", state.kosten.map(k => k.id === gewijzigd.id ? gewijzigd : k));
+    setEditId(null);
   };
 
   // Import
@@ -290,7 +341,7 @@ export default function App() {
         const [datum, cat, bedrag, km, omschr] = regel.split(/[,;	]/);
         if (!datum || isNaN(Number(bedrag))) throw new Error(`Ongeldige regel: ${regel}`);
         const catMatch = COST_CATEGORIES.find(c => c.id === cat.trim().toLowerCase() || c.label.toLowerCase().includes(cat.trim().toLowerCase()));
-        return { id: id++, datum: datum.trim(), categorie: catMatch?.id||"overig", bedrag: Number(bedrag), km: km?Number(km):null, omschrijving: omschr?.trim()||"" };
+        return { id: id++, datum: datum.trim(), categorie: catMatch?.id||"overig", bedrag: Number(bedrag), km: km?Number(km):null, omschrijving: omschr?.trim()||"", automatisch: false };
       });
       set("kosten", [...state.kosten, ...nieuw]);
       setImportText("");
@@ -298,7 +349,7 @@ export default function App() {
   };
 
   const exportCSV = "datum;categorie;bedrag;km;omschrijving\n" +
-    state.kosten.map(k => `${k.datum};${k.categorie};${k.bedrag};${k.km||""};${k.omschrijving}`).join("\n");
+    alleKosten.map(k => `${k.datum};${k.categorie};${k.bedrag};${k.km||""};${k.omschrijving}`).join("\n");
 
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
@@ -322,8 +373,8 @@ export default function App() {
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <MetricCard label="Totaalkosten"  value={fmt(totaalKosten + totaleAfschr)} sub="incl. afschrijving" />
-          <MetricCard label="Per maand"     value={fmt(eigenMaand)}   sub="incl. afschr."   color={COLORS.accent} />
-          <MetricCard label="Per km"        value={fmtC(kmTotaal)}    sub="vast + variabel"  color={COLORS.primary} />
+          <MetricCard label="Per maand"     value={fmt(eigenMaand)}   sub="incl. afschr." color={COLORS.accent} />
+          <MetricCard label="Per km"        value={fmtC(kmTotaal)}    sub="vast + variabel" color={COLORS.primary} />
         </div>
       </div>
 
@@ -391,13 +442,38 @@ export default function App() {
           {mrb && (
             <Card>
               <SectionTitle>Motorrijtuigenbelasting schatting</SectionTitle>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
                 <MetricCard label="Per kwartaal"   value={fmt(mrb.kwartaal)}    sub="incl. opcenten" />
                 <MetricCard label="Per jaar"        value={fmt(mrb.jaarlijks)}   sub="schatting" color={COLORS.accent} />
                 <MetricCard label="Basis excl. op." value={fmt(mrb.basisBedrag)} sub="landelijk tarief" />
                 <MetricCard label="Opcenten"        value={`${mrb.opcenten}%`}   sub={state.provincie} />
               </div>
-              <div style={{ fontSize: 12, color: "#bbb" }}>
+              {/* Toggle automatische MRB posten */}
+              <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: state.mrbAutomatisch ? "#f0faf4" : "#f7f6f2", borderRadius: 8 }}>
+                <label style={{ position: "relative", width: 36, height: 20, display: "inline-block", flexShrink: 0 }}>
+                  <input type="checkbox" checked={state.mrbAutomatisch} onChange={e => set("mrbAutomatisch", e.target.checked)}
+                    style={{ opacity: 0, width: 0, height: 0 }} />
+                  <span style={{
+                    position: "absolute", inset: 0, background: state.mrbAutomatisch ? COLORS.success : "#ccc",
+                    borderRadius: 20, cursor: "pointer", transition: "background 0.2s",
+                  }} />
+                  <span style={{
+                    position: "absolute", top: 2, left: state.mrbAutomatisch ? 18 : 2,
+                    width: 16, height: 16, background: "#fff", borderRadius: "50%",
+                    transition: "left 0.2s", pointerEvents: "none",
+                  }} />
+                </label>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 500 }}>MRB kwartaalposten automatisch toevoegen</div>
+                  <div style={{ fontSize: 12, color: "#999" }}>
+                    {state.mrbAutomatisch
+                      ? `${mrbPosten.length} posten van ${fmt(mrb.kwartaal)} toegevoegd aan kostenlijst (niet bewerkbaar, op basis van schatting)`
+                      : `Voeg ${fmt(mrb.kwartaal)}/kwartaal automatisch toe aan je kostenlijst voor de hele bezitsperiode`
+                    }
+                  </div>
+                </div>
+              </div>
+              <div style={{ fontSize: 12, color: "#bbb", marginTop: 10 }}>
                 ⓘ Schatting op basis van {fmtN(state.gewichtKg)} kg, {state.brandstof}, provincie {state.provincie}. Exacte bedragen via belastingdienst.nl.
               </div>
             </Card>
@@ -423,6 +499,7 @@ export default function App() {
       {/* ══ TAB KOSTEN ══ */}
       {tab === "kosten" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+          {/* Toevoegen */}
           <Card>
             <SectionTitle>Kostenpost toevoegen</SectionTitle>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
@@ -456,6 +533,7 @@ export default function App() {
             </div>
           </Card>
 
+          {/* Categorieoverzicht + km */}
           <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
             <Card style={{ flex: 2, minWidth: 260 }}>
               <SectionTitle>Per categorie</SectionTitle>
@@ -471,10 +549,6 @@ export default function App() {
                   </div>
                 </div>
               ))}
-              <div style={{ display: "flex", gap: 16, marginTop: 8, fontSize: 12, color: "#999" }}>
-                <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 10, height: 10, background: COLORS.primary, borderRadius: 2, display: "inline-block" }} />Vast</span>
-                <span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ width: 10, height: 10, background: COLORS.accent,  borderRadius: 2, display: "inline-block" }} />Variabel</span>
-              </div>
             </Card>
             <Card style={{ flex: 1, minWidth: 200 }}>
               <SectionTitle>Kosten per km</SectionTitle>
@@ -497,8 +571,11 @@ export default function App() {
             </Card>
           </div>
 
+          {/* Kostenlijst met inline bewerken */}
           <Card>
-            <SectionTitle>Alle kostenposten ({state.kosten.length})</SectionTitle>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.875rem" }}>
+              <SectionTitle style={{ margin: 0 }}>Alle kostenposten ({alleKosten.length}){mrbPosten.length > 0 && <span style={{ color: COLORS.success, fontWeight: 400 }}> waarvan {mrbPosten.length} MRB automatisch</span>}</SectionTitle>
+            </div>
             <div style={{ overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <thead>
@@ -509,18 +586,30 @@ export default function App() {
                   </tr>
                 </thead>
                 <tbody>
-                  {[...state.kosten].sort((a,b) => (b.datum||"").localeCompare(a.datum||"")).map(k => {
+                  {[...alleKosten].sort((a,b) => (b.datum||"").localeCompare(a.datum||"")).map(k => {
                     const cat = COST_CATEGORIES.find(c => c.id === k.categorie);
+                    if (editId === k.id) {
+                      return <EditRij key={k.id} kost={k} onSave={slaOpEdit} onCancel={() => setEditId(null)} />;
+                    }
                     return (
-                      <tr key={k.id} style={{ borderBottom: "0.5px solid #f0ede8" }}>
+                      <tr key={k.id} style={{ borderBottom: "0.5px solid #f0ede8", background: k.automatisch ? "#f9fdf9" : "transparent" }}>
                         <td style={{ padding: "7px 8px", color: "#888" }}>{k.datum}</td>
                         <td style={{ padding: "7px 8px" }}>{cat?.icon} {cat?.label||k.categorie}</td>
                         <td style={{ padding: "7px 8px", fontWeight: 500 }}>{fmt(k.bedrag)}</td>
                         <td style={{ padding: "7px 8px", color: "#bbb" }}>{k.km ? fmtN(k.km) : "—"}</td>
-                        <td style={{ padding: "7px 8px", color: "#999" }}>{k.omschrijving||"—"}</td>
-                        <td style={{ padding: "7px 8px" }}>
-                          <button onClick={() => set("kosten", state.kosten.filter(x => x.id !== k.id))}
-                            style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.danger, fontSize: 15 }}>✕</button>
+                        <td style={{ padding: "7px 8px", color: "#999" }}>
+                          {k.omschrijving||"—"}
+                          {k.automatisch && <span style={{ marginLeft: 6, fontSize: 11, color: COLORS.success }}>auto</span>}
+                        </td>
+                        <td style={{ padding: "7px 8px", whiteSpace: "nowrap" }}>
+                          {!k.automatisch && (
+                            <>
+                              <button onClick={() => setEditId(k.id)}
+                                style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.primary, fontSize: 14, marginRight: 4 }} title="Bewerken">✏</button>
+                              <button onClick={() => set("kosten", state.kosten.filter(x => x.id !== k.id))}
+                                style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.danger, fontSize: 14 }} title="Verwijderen">✕</button>
+                            </>
+                          )}
                         </td>
                       </tr>
                     );
@@ -560,9 +649,7 @@ export default function App() {
               </LineChart>
             </ResponsiveContainer>
             {grafiekData.length > 1 && (() => {
-              const eindEigen = grafiekData[grafiekData.length-1]["Eigen auto"];
-              const eindLease = grafiekData[grafiekData.length-1]["Privé lease"];
-              const v = eindEigen - eindLease;
+              const v = grafiekData[grafiekData.length-1]["Eigen auto"] - grafiekData[grafiekData.length-1]["Privé lease"];
               return (
                 <div style={{ marginTop: 12, padding: "10px 14px", background: v > 0 ? "#fdf3ef" : "#f0faf4", borderRadius: 8, fontSize: 13 }}>
                   {v > 0
@@ -603,7 +690,7 @@ export default function App() {
               </LineChart>
             </ResponsiveContainer>
             <div style={{ fontSize: 12, color: "#bbb", marginTop: 8 }}>
-              Degressieve curve — meer verlies in de eerste jaren. Verticale stippellijn = huidige positie in bezitsperiode.
+              Degressieve curve — meer verlies in de eerste jaren. Verticale stippellijn = huidige positie.
             </div>
           </Card>
         </div>
@@ -638,7 +725,6 @@ export default function App() {
               </div>
             </Card>
           </div>
-
           <Card>
             <SectionTitle>Vergelijking over {state.leaseLooptijd} maanden</SectionTitle>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: "1.25rem" }}>
@@ -667,15 +753,15 @@ export default function App() {
                 </div>
               );
             })}
-            <div style={{ padding: "12px 14px", background: "#f7f6f2", borderRadius: 8, fontSize: 13, marginTop: 8 }}>
+            <div style={{ padding: "12px 14px", background: "#f7f6f2", borderRadius: 8, fontSize: 13 }}>
               <div style={{ fontWeight: 500, marginBottom: 6 }}>Kosten per km</div>
               <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
                 <span>🚗 Eigen auto: <b>{fmtC(kmTotaal)}/km</b></span>
                 <span>📝 Privé lease: <b>{fmtC(leaseKmKost)}/km</b></span>
               </div>
             </div>
-            <div style={{ marginTop: 10, fontSize: 12, color: "#bbb", lineHeight: 1.6 }}>
-              ⚠️ Leasebedragen zijn schattingen op basis van cataloguswaarde, looptijd en km. Vraag altijd een offerte op bij een leasemaatschappij.
+            <div style={{ marginTop: 10, fontSize: 12, color: "#bbb" }}>
+              ⚠️ Leasebedragen zijn schattingen. Vraag altijd een offerte op bij een leasemaatschappij.
             </div>
           </Card>
         </div>
@@ -688,8 +774,7 @@ export default function App() {
             <SectionTitle>CSV importeren</SectionTitle>
             <div style={{ fontSize: 13, color: "#999", marginBottom: 10, lineHeight: 1.7 }}>
               Formaat: <code style={{ background: "#f7f6f2", padding: "2px 6px", borderRadius: 4, fontSize: 12 }}>datum;categorie;bedrag;km;omschrijving</code><br />
-              Categorieën: {COST_CATEGORIES.map(c => c.id).join(", ")}<br />
-              Voorbeeld: <code style={{ background: "#f7f6f2", padding: "2px 6px", borderRadius: 4, fontSize: 12 }}>2024-03-15;brandstof;85;62000;Tankbeurt</code>
+              Categorieën: {COST_CATEGORIES.map(c => c.id).join(", ")}
             </div>
             <textarea value={importText} onChange={e => setImportText(e.target.value)} rows={7}
               placeholder={"datum;categorie;bedrag;km;omschrijving\n2024-01-10;verzekering;950;;Jaarlijkse premie\n2024-03-15;brandstof;85;62000;Tankbeurt"}
@@ -700,17 +785,15 @@ export default function App() {
               <button onClick={() => setImportText("")} style={{ background: "none", border: "0.5px solid #e0ddd8", borderRadius: 6, padding: "9px 14px", cursor: "pointer", color: "#999" }}>Wissen</button>
             </div>
           </Card>
-
           <Card>
             <SectionTitle>Export naar CSV</SectionTitle>
-            <textarea readOnly rows={Math.min(state.kosten.length + 2, 14)} value={exportCSV}
+            <textarea readOnly rows={Math.min(alleKosten.length + 2, 14)} value={exportCSV}
               style={{ width: "100%", fontFamily: "monospace", fontSize: 12, padding: 10, borderRadius: 6, border: "0.5px solid #e0ddd8", background: "#fafaf8", color: "#888", boxSizing: "border-box" }} />
           </Card>
-
           <Card>
             <SectionTitle>Data beheer</SectionTitle>
             <div style={{ fontSize: 13, color: "#999", marginBottom: 12 }}>
-              Alle gegevens worden automatisch opgeslagen in je browser (localStorage). Ze blijven bewaard ook na afsluiten.
+              Alle gegevens worden automatisch opgeslagen in je browser (localStorage).
             </div>
             <button
               onClick={() => { if (window.confirm("Weet je zeker dat je alle data wilt wissen?")) { localStorage.removeItem(STORAGE_KEY); setState(defaultState()); }}}
