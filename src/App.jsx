@@ -152,9 +152,15 @@ function defaultState() {
     jaarlijkseKm: 15000, cataloguswaarde: 30000,
     leaseLooptijd: 48, leaseKm: 15000, leaseAanbetaling: 0,
     mrbAutomatisch: false,
-    mrbWerkelijkMaand: "",       // werkelijk MRB bedrag per maand
+    mrbWerkelijkMaand: "",
     verzekeringAutomatisch: false,
-    verzekeringJaren: [],        // [{startJaar, bedrag}]
+    verzekeringJaren: [],
+    mobiliteitBrutoMaand: "",
+    kmVergTarief: "0.23",
+    kmVergKmMaand: "",
+    kmVergMaandTotaal: "",
+    belastingschijf: 36.9,
+    bijtellingPct: 22,
     kosten: [],
   };
 }
@@ -395,6 +401,38 @@ export default function App() {
 
   const leasePrive  = berekenLeasePrive(state.cataloguswaarde, state.leaseLooptijd, state.leaseKm, state.leaseAanbetaling);
   const leaseKmKost = (leasePrive * state.leaseLooptijd + state.leaseAanbetaling) / (state.leaseKm * state.leaseLooptijd / 12);
+
+  // ── Vergoedingen berekening ──
+  const schijf = Number(state.belastingschijf) / 100;
+
+  // Mobiliteitsvergoeding: bruto -> netto
+  const mobBrutoMaand = Number(state.mobiliteitBrutoMaand) || 0;
+  const mobNettoMaand = Math.round(mobBrutoMaand * (1 - schijf));
+
+  // Km-vergoeding: belastingvrij tot €0,23/km (2024), alles daarboven is belast
+  const kmTarief      = Number(state.kmVergTarief) || 0;
+  const kmPerMaand    = Number(state.kmVergKmMaand) || 0;
+  const kmMaandTotaal = Number(state.kmVergMaandTotaal) || 0;
+  // Gebruik maandtotaal als opgegeven, anders tarief × km
+  const kmVergBruto   = kmMaandTotaal > 0 ? kmMaandTotaal : Math.round(kmTarief * kmPerMaand);
+  const vrijgesteld   = Math.min(kmVergBruto, Math.round(0.23 * (kmMaandTotaal > 0 ? (kmVergBruto / Math.max(kmTarief, 0.01)) : kmPerMaand)));
+  const belastbaar    = Math.max(kmVergBruto - vrijgesteld, 0);
+  const kmVergNetto   = Math.round(kmVergBruto - belastbaar * schijf);
+
+  // Totale maandelijkse vergoeding netto
+  const totaalVergNetto = mobNettoMaand + kmVergNetto;
+
+  // Nettokosten eigen auto per maand (kosten minus vergoedingen)
+  const eigenMaandNetto = eigenMaand - totaalVergNetto;
+
+  // Bijtelling lease
+  const bijtellingMaand     = Math.round((state.cataloguswaarde * (Number(state.bijtellingPct) / 100)) / 12);
+  const bijtellingBelasting = Math.round(bijtellingMaand * schijf);
+  // Lease: maandbedrag + belasting op bijtelling - geen vergoedingen
+  const leaseMaandNetto     = leasePrive + bijtellingBelasting;
+
+  // Vergelijk netto: verschil per maand
+  const verschilNettoMaand  = eigenMaandNetto - leaseMaandNetto;
 
   // Kosten gegroepeerd per jaar (gesorteerd nieuw→oud)
   const groepenPerJaar = {};
@@ -656,6 +694,82 @@ export default function App() {
                 )}
               </div>
             )}
+          </Card>
+
+          {/* Vergoedingen werkgever */}
+          <Card>
+            <SectionTitle>Vergoedingen van werkgever</SectionTitle>
+            <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap" }}>
+              {/* Mobiliteitsvergoeding */}
+              <div style={{ flex: 1, minWidth: 220 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "#bbb", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10 }}>Mobiliteitsvergoeding</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <label style={{ fontSize: 13, color: "#666", width: 160, flexShrink: 0 }}>Bruto per maand (€)</label>
+                    <input type="number" placeholder="bijv. 300" value={state.mobiliteitBrutoMaand}
+                      onChange={e => set("mobiliteitBrutoMaand", e.target.value)} style={{ flex: 1 }} />
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <label style={{ fontSize: 13, color: "#666", width: 160, flexShrink: 0 }}>Belastingschijf (%)</label>
+                    <input type="number" step="0.1" placeholder="36.9" value={state.belastingschijf}
+                      onChange={e => set("belastingschijf", e.target.value)} style={{ flex: 1 }} />
+                  </div>
+                  {mobBrutoMaand > 0 && (
+                    <div style={{ padding: "8px 12px", background: "#f0faf4", borderRadius: 8, fontSize: 13 }}>
+                      <span style={{ color: "#666" }}>Bruto: </span><b>{fmt(mobBrutoMaand)}/mnd</b>
+                      <span style={{ color: "#bbb", margin: "0 8px" }}>→</span>
+                      <span style={{ color: "#666" }}>Netto: </span><b style={{ color: COLORS.success }}>{fmt(mobNettoMaand)}/mnd</b>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ width: "0.5px", background: "#e8e6e0", flexShrink: 0 }} />
+
+              {/* Km-vergoeding */}
+              <div style={{ flex: 1, minWidth: 220 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "#bbb", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10 }}>Km-vergoeding</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <label style={{ fontSize: 13, color: "#666", width: 160, flexShrink: 0 }}>Tarief (€/km)</label>
+                    <input type="number" step="0.01" placeholder="0.23" value={state.kmVergTarief}
+                      onChange={e => set("kmVergTarief", e.target.value)} style={{ flex: 1 }} />
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <label style={{ fontSize: 13, color: "#666", width: 160, flexShrink: 0 }}>Km/maand voor werk</label>
+                    <input type="number" placeholder="bijv. 800" value={state.kmVergKmMaand}
+                      onChange={e => set("kmVergKmMaand", e.target.value)} style={{ flex: 1 }} />
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <label style={{ fontSize: 13, color: "#666", width: 160, flexShrink: 0 }}>Of: totaal/maand (€)</label>
+                    <input type="number" placeholder="overschrijft tarief×km" value={state.kmVergMaandTotaal}
+                      onChange={e => set("kmVergMaandTotaal", e.target.value)} style={{ flex: 1 }} />
+                  </div>
+                  {kmVergBruto > 0 && (
+                    <div style={{ padding: "8px 12px", background: "#f0faf4", borderRadius: 8, fontSize: 13 }}>
+                      <span style={{ color: "#666" }}>Bruto: </span><b>{fmt(kmVergBruto)}/mnd</b>
+                      <span style={{ color: "#bbb", margin: "0 4px" }}>·</span>
+                      <span style={{ color: "#666" }}>Vrijgesteld: </span>{fmt(vrijgesteld)}
+                      {belastbaar > 0 && <span style={{ color: "#bbb" }}> · belast: {fmt(belastbaar)}</span>}
+                      <span style={{ color: "#bbb", margin: "0 8px" }}>→</span>
+                      <span style={{ color: "#666" }}>Netto: </span><b style={{ color: COLORS.success }}>{fmt(kmVergNetto)}/mnd</b>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Totaal vergoeding */}
+            {totaalVergNetto > 0 && (
+              <div style={{ marginTop: 14, padding: "12px 16px", background: "#f7f6f2", borderRadius: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <MetricCard label="Totaal netto/mnd" value={fmt(totaalVergNetto)} sub="mobiliteit + km" color={COLORS.success} />
+                <MetricCard label="Nettokosten auto/mnd" value={fmt(Math.max(eigenMaandNetto, 0))} sub="kosten minus vergoedingen" color={eigenMaandNetto < 0 ? COLORS.success : COLORS.accent} />
+                <MetricCard label="Totaal netto/jaar" value={fmt(totaalVergNetto * 12)} sub="schatting" />
+              </div>
+            )}
+            <div style={{ marginTop: 10, fontSize: 12, color: "#bbb" }}>
+              ⓘ Km-vergoeding tot €0,23/km is belastingvrij (2024). Daarboven wordt het verschil belast tegen jouw schijf.
+            </div>
           </Card>
 
           {/* Samenvatting */}
@@ -951,10 +1065,17 @@ export default function App() {
               <Row label="Looptijd (mnd)"  wide><input type="number" value={state.leaseLooptijd}   onChange={e => set("leaseLooptijd",   Number(e.target.value))} style={{ flex: 1 }} /></Row>
               <Row label="Km per jaar"     wide><input type="number" value={state.leaseKm}          onChange={e => set("leaseKm",          Number(e.target.value))} style={{ flex: 1 }} /></Row>
               <Row label="Aanbetaling"     wide><input type="number" value={state.leaseAanbetaling} onChange={e => set("leaseAanbetaling", Number(e.target.value))} style={{ flex: 1 }} /></Row>
+              <Row label="Bijtelling (%)"  wide>
+                <select value={state.bijtellingPct} onChange={e => set("bijtellingPct", Number(e.target.value))} style={{ flex: 1 }}>
+                  <option value={16}>16% (volledig elektrisch)</option>
+                  <option value={22}>22% (standaard)</option>
+                  <option value={35}>35% (ouder dan 15 jaar)</option>
+                </select>
+              </Row>
             </Card>
             <Card style={{ flex: 1, minWidth: 240 }}>
-              <SectionTitle>Lease uitkomst</SectionTitle>
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <SectionTitle>Lease uitkomst (bruto)</SectionTitle>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
                   <span style={{ color: "#666", fontSize: 14 }}>Maandbedrag (schatting)</span>
                   <span style={{ fontWeight: 600, fontSize: 20, color: COLORS.lease }}>{fmt(leasePrive)}</span>
@@ -967,42 +1088,137 @@ export default function App() {
                   <span style={{ color: "#999" }}>Kosten per km</span>
                   <span style={{ fontWeight: 500 }}>{fmtC(leaseKmKost)}/km</span>
                 </div>
+                <div style={{ borderTop: "0.5px solid #e8e6e0", paddingTop: 10, marginTop: 2 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
+                    <span style={{ color: "#999" }}>Bijtelling ({state.bijtellingPct}% van {fmt(state.cataloguswaarde)})</span>
+                    <span>{fmt(bijtellingMaand)}/mnd</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
+                    <span style={{ color: "#999" }}>Belasting op bijtelling ({state.belastingschijf}%)</span>
+                    <span style={{ color: COLORS.danger }}>+ {fmt(bijtellingBelasting)}/mnd</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, fontWeight: 600 }}>
+                    <span>Lease netto maandlast</span>
+                    <span style={{ color: COLORS.danger }}>{fmt(leaseMaandNetto)}</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: "#bbb", marginTop: 4 }}>lease + belasting bijtelling, geen vergoedingen</div>
+                </div>
               </div>
             </Card>
           </div>
+
+          {/* Bruto vergelijking */}
           <Card>
-            <SectionTitle>Vergelijking over {state.leaseLooptijd} maanden</SectionTitle>
+            <SectionTitle>Bruto vergelijking (voor vergoedingen)</SectionTitle>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: "1.25rem" }}>
-              <MetricCard label="Eigen auto /mnd"  value={fmt(eigenMaand)} sub="incl. afschr. & kosten" />
-              <MetricCard label="Privé lease /mnd" value={fmt(leasePrive)} sub="all-in schatting" color={COLORS.lease} />
+              <MetricCard label="Eigen auto /mnd"  value={fmt(eigenMaand)}  sub="kosten + afschr." />
+              <MetricCard label="Privé lease /mnd" value={fmt(leasePrive)}  sub="all-in schatting" color={COLORS.lease} />
               <MetricCard label="Verschil /mnd"
                 value={fmt(Math.abs(eigenMaand - leasePrive))}
-                sub={eigenMaand > leasePrive ? "eigen auto is duurder" : "lease is duurder"}
+                sub={eigenMaand > leasePrive ? "eigen auto duurder" : "lease duurder"}
                 color={eigenMaand > leasePrive ? COLORS.danger : COLORS.success}
               />
             </div>
-            {[{ label: "Eigen auto", maand: eigenMaand, color: COLORS.primary }, { label: "Privé lease", maand: leasePrive, color: COLORS.lease }].map(item => {
+            {[
+              { label: "Eigen auto",  maand: eigenMaand,  color: COLORS.primary },
+              { label: "Privé lease", maand: leasePrive,  color: COLORS.lease },
+            ].map(item => {
               const max = Math.max(eigenMaand, leasePrive, 1);
               return (
-                <div key={item.label} style={{ marginBottom: 16 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, marginBottom: 5 }}>
+                <div key={item.label} style={{ marginBottom: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
                     <span style={{ fontWeight: 500 }}>{item.label}</span>
-                    <span style={{ fontWeight: 600 }}>{fmt(item.maand)}/mnd · {fmt(item.maand * state.leaseLooptijd)} totaal</span>
+                    <span style={{ fontWeight: 600 }}>{fmt(item.maand)}/mnd</span>
                   </div>
-                  <div style={{ height: 10, background: "#f0ede8", borderRadius: 5 }}>
-                    <div style={{ height: 10, borderRadius: 5, width: `${(item.maand/max)*100}%`, background: item.color, transition: "width 0.3s" }} />
+                  <div style={{ height: 8, background: "#f0ede8", borderRadius: 4 }}>
+                    <div style={{ height: 8, borderRadius: 4, width: `${(item.maand/max)*100}%`, background: item.color, transition: "width 0.3s" }} />
                   </div>
                 </div>
               );
             })}
-            <div style={{ padding: "12px 14px", background: "#f7f6f2", borderRadius: 8, fontSize: 13 }}>
-              <div style={{ fontWeight: 500, marginBottom: 6 }}>Kosten per km</div>
-              <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
-                <span>🚗 Eigen auto: <b>{fmtC(kmTotaal)}/km</b></span>
-                <span>📝 Privé lease: <b>{fmtC(leaseKmKost)}/km</b></span>
+          </Card>
+
+          {/* Netto vergelijking inclusief vergoedingen en bijtelling */}
+          <Card>
+            <SectionTitle>Netto vergelijking (incl. vergoedingen & bijtelling)</SectionTitle>
+            <div style={{ fontSize: 13, color: "#999", marginBottom: 14, lineHeight: 1.6 }}>
+              Bij eigen auto ontvang je vergoedingen. Bij lease niet — maar betaal je wel belasting over de bijtelling.
+              Belastingschijf: <b>{state.belastingschijf}%</b> (stel in op de tab Mijn auto → Vergoedingen).
+            </div>
+
+            {/* Uitleg eigen auto netto */}
+            <div style={{ marginBottom: "1.25rem" }}>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: COLORS.primary }}>🚗 Eigen auto — netto maandlast</div>
+              <div style={{ background: "#f7f6f2", borderRadius: 8, padding: "12px 14px", fontSize: 13 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+                  <span style={{ color: "#666" }}>Brutkosten/mnd (kosten + afschr.)</span>
+                  <span style={{ fontWeight: 500 }}>{fmt(eigenMaand)}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+                  <span style={{ color: "#666" }}>Mobiliteitsvergoeding netto</span>
+                  <span style={{ color: COLORS.success }}>− {fmt(mobNettoMaand)}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                  <span style={{ color: "#666" }}>Km-vergoeding netto</span>
+                  <span style={{ color: COLORS.success }}>− {fmt(kmVergNetto)}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", borderTop: "0.5px solid #e8e6e0", paddingTop: 8, fontWeight: 600, fontSize: 15 }}>
+                  <span>Netto maandlast eigen auto</span>
+                  <span style={{ color: eigenMaandNetto <= 0 ? COLORS.success : COLORS.primary }}>{fmt(Math.max(eigenMaandNetto, 0))}{eigenMaandNetto < 0 ? " (voordeel)" : ""}</span>
+                </div>
               </div>
             </div>
-            <div style={{ marginTop: 10, fontSize: 12, color: "#bbb" }}>⚠️ Leasebedragen zijn schattingen. Vraag altijd een offerte op bij een leasemaatschappij.</div>
+
+            {/* Uitleg lease netto */}
+            <div style={{ marginBottom: "1.25rem" }}>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: COLORS.lease }}>📋 Privé lease — netto maandlast</div>
+              <div style={{ background: "#f7f6f2", borderRadius: 8, padding: "12px 14px", fontSize: 13 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+                  <span style={{ color: "#666" }}>Lease maandbedrag</span>
+                  <span style={{ fontWeight: 500 }}>{fmt(leasePrive)}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+                  <span style={{ color: "#666" }}>Bijtelling ({state.bijtellingPct}%): {fmt(bijtellingMaand)}/mnd</span>
+                  <span style={{ color: COLORS.danger }}>+ {fmt(bijtellingBelasting)} belasting</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+                  <span style={{ color: "#666" }}>Mobiliteitsvergoeding</span>
+                  <span style={{ color: "#bbb" }}>− €0 (vervalt bij lease)</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                  <span style={{ color: "#666" }}>Km-vergoeding</span>
+                  <span style={{ color: "#bbb" }}>− €0 (vervalt bij lease)</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", borderTop: "0.5px solid #e8e6e0", paddingTop: 8, fontWeight: 600, fontSize: 15 }}>
+                  <span>Netto maandlast lease</span>
+                  <span style={{ color: COLORS.lease }}>{fmt(leaseMaandNetto)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Conclusie */}
+            {(() => {
+              const verschil = Math.abs(verschilNettoMaand);
+              const eigenGoedkoper = verschilNettoMaand < 0;
+              return (
+                <div style={{ padding: "14px 16px", background: eigenGoedkoper ? "#f0faf4" : "#fdf3ef", borderRadius: 8, fontSize: 14 }}>
+                  <div style={{ fontWeight: 600, marginBottom: 6, fontSize: 15 }}>
+                    {eigenGoedkoper
+                      ? `✅ Eigen auto is netto ${fmt(verschil)}/maand goedkoper`
+                      : `📋 Lease is netto ${fmt(verschil)}/maand goedkoper`}
+                  </div>
+                  <div style={{ fontSize: 13, color: "#666", display: "flex", gap: 20, flexWrap: "wrap" }}>
+                    <span>Eigen auto netto: <b>{fmt(Math.max(eigenMaandNetto, 0))}/mnd</b></span>
+                    <span>Lease netto: <b>{fmt(leaseMaandNetto)}/mnd</b></span>
+                    <span>Verschil/jaar: <b>{fmt(verschil * 12)}</b></span>
+                  </div>
+                </div>
+              );
+            })()}
+            <div style={{ marginTop: 10, fontSize: 12, color: "#bbb" }}>
+              ⚠️ Leasebedragen zijn schattingen. Bijtelling is afhankelijk van exacte cataloguswaarde en brandstoftype.
+              Vraag een offerte op bij een leasemaatschappij voor exacte bedragen.
+            </div>
           </Card>
         </div>
       )}
