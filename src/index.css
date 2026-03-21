@@ -1,0 +1,18 @@
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; background: #f5f4f0; }
+input, select, textarea, button {
+  font-family: inherit;
+  font-size: 14px;
+  outline: none;
+  border-radius: 6px;
+}
+input, select, textarea {
+  border: 0.5px solid #e0ddd8;
+  padding: 7px 10px;
+  background: #fff;
+  color: #1a1a1a;
+}
+input:focus, select:focus, textarea:focus {
+  border-color: #1B4F72;
+}
+button { cursor: pointer; }
