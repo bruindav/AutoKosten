@@ -1186,47 +1186,71 @@ export default function App() {
                 {/* Drie kolommen: eigen auto, zakelijk lease, privé lease */}
                 {(() => {
                   // ── Zakelijk lease ──
-                  // Mobiliteitsvergoeding bruto gaat naar leasemaatschappij
-                  // Km-vergoeding vervalt. Bijtelling is belast.
-                  const zakLeaseBruto     = leasePrive;
-                  const zakNaMobBruto     = Math.max(zakLeaseBruto - mobBrutoMaand, 0);
-                  const zakNetto          = zakNaMobBruto + bijtellingBelasting;
-                  const zakTotaal         = zakNetto * looptijdMnd;
+                  const zakLeaseBruto  = leasePrive;
+                  const zakNaMobBruto  = Math.max(zakLeaseBruto - mobBrutoMaand, 0);
+                  const zakNetto       = zakNaMobBruto + bijtellingBelasting;
+                  const zakTotaal      = zakNetto * looptijdMnd;
 
                   // ── Privé lease ──
-                  // Eigen auto, maar in leaseconstructie: je betaalt zelf het leasebedrag.
-                  // Mobiliteitsvergoeding netto aftrekken (ontvang je gewoon als loon).
-                  // Km-vergoeding blijft van toepassing. Geen bijtelling.
-                  const privLeaseBruto    = leasePrive;
-                  const privNetto         = Math.max(privLeaseBruto - mobNettoMaand - kmVergNetto, 0);
-                  const privTotaal        = privNetto * looptijdMnd;
+                  // Vergoedingen kunnen het leasebedrag overtreffen → overschot netto uitbetaald
+                  const privLeaseBruto   = leasePrive;
+                  const privSaldo        = privLeaseBruto - mobNettoMaand - kmVergNetto; // kan negatief zijn
+                  const privNetto        = Math.max(privSaldo, 0);
+                  const privOverschot    = privSaldo < 0 ? Math.abs(privSaldo) : 0;
+                  const privTotaal       = privNetto * looptijdMnd;
 
-                  // ── Eigen auto netto (al berekend buiten scope) ──
-                  const eigenNetto        = Math.max(eigenNettoMaandPeriode, 0);
-                  const eigenTotaalP      = eigenNetto * looptijdMnd;
+                  // ── Eigen auto ──
+                  // eigenNettoMaandPeriode kan ook negatief zijn (vergoedingen > kosten)
+                  const eigenSaldo       = eigenNettoMaandPeriode; // kan negatief zijn
+                  const eigenNetto       = Math.max(eigenSaldo, 0);
+                  const eigenOverschot   = eigenSaldo < 0 ? Math.abs(eigenSaldo) : 0;
+                  const eigenTotaalP     = eigenNetto * looptijdMnd;
 
+                  // Voor staafgrafiek: gebruik absolute netto last (0 bij overschot)
                   const scenario = [
-                    { label: "🚗 Eigen auto",       netto: eigenNetto,  totaal: eigenTotaalP, color: COLORS.primary },
-                    { label: "💼 Zakelijk lease",   netto: zakNetto,    totaal: zakTotaal,    color: "#8E44AD" },
-                    { label: "📋 Privé lease",      netto: privNetto,   totaal: privTotaal,   color: COLORS.lease },
+                    { label: "🚗 Eigen auto",     netto: eigenNetto, overschot: eigenOverschot, totaal: eigenTotaalP, color: COLORS.primary },
+                    { label: "💼 Zakelijk lease", netto: zakNetto,   overschot: 0,              totaal: zakTotaal,    color: "#8E44AD" },
+                    { label: "📋 Privé lease",    netto: privNetto,  overschot: privOverschot,  totaal: privTotaal,   color: COLORS.lease },
                   ];
-                  const maxNetto  = Math.max(...scenario.map(s => s.netto), 1);
-                  const goedkoopste = scenario.reduce((a, b) => a.netto <= b.netto ? a : b);
+                  const maxNetto    = Math.max(...scenario.map(s => s.netto), 1);
+                  // Goedkoopst = laagste netto last (overschot = nog beter dan 0)
+                  const effectief   = scenario.map(s => ({ ...s, effectief: s.netto - s.overschot }));
+                  const goedkoopste = effectief.reduce((a, b) => a.effectief <= b.effectief ? a : b);
 
                   const KolLabel = ({ children, color }) => (
                     <div style={{ fontSize: 13, fontWeight: 600, color, marginBottom: 10 }}>{children}</div>
                   );
                   const Lijn = () => <div style={{ borderTop: "0.5px solid #e0ddd8", margin: "8px 0" }} />;
-                  const Totaalrij = ({ netto, totaal, color }) => (
+
+                  const Totaalrij = ({ netto, overschot, totaal, color }) => (
                     <>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 600, fontSize: 15 }}>
-                        <span>Netto/mnd</span>
-                        <span style={{ color }}>{fmt(netto)}</span>
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#999", marginTop: 4 }}>
-                        <span>Totaal {looptijdMnd} mnd</span>
-                        <span>{fmt(totaal)}</span>
-                      </div>
+                      <Lijn />
+                      {overschot > 0 ? (
+                        <>
+                          <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 600, fontSize: 14, color: COLORS.success }}>
+                            <span>Netto uitbetaald/mnd</span>
+                            <span>+ {fmt(overschot)}</span>
+                          </div>
+                          <div style={{ fontSize: 11, color: COLORS.success, marginTop: 2, marginBottom: 4 }}>
+                            Vergoedingen overtreffen de autokosten
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#999" }}>
+                            <span>Totaal {looptijdMnd} mnd uitbetaald</span>
+                            <span style={{ color: COLORS.success, fontWeight: 500 }}>+ {fmt(overschot * looptijdMnd)}</span>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 600, fontSize: 15 }}>
+                            <span>Netto/mnd</span>
+                            <span style={{ color }}>{fmt(netto)}</span>
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#999", marginTop: 4 }}>
+                            <span>Totaal {looptijdMnd} mnd</span>
+                            <span>{fmt(totaal)}</span>
+                          </div>
+                        </>
+                      )}
                     </>
                   );
 
@@ -1237,15 +1261,14 @@ export default function App() {
                         {/* Eigen auto */}
                         <div style={{ flex: 1, minWidth: 220 }}>
                           <KolLabel color={COLORS.primary}>🚗 Eigen auto</KolLabel>
-                          <div style={{ background: "#f7f6f2", borderRadius: 8, padding: "12px 14px" }}>
-                            <RegelItem label="Kosten/mnd"        waarde={`${fmt(kostenTotaalPeriode / looptijdMnd)}/mnd`} sub={`${kostenInPeriode.length} posten`} />
-                            <RegelItem label="Afschrijving/mnd"  waarde={`${fmt(afschrMaandPeriode)}/mnd`} />
+                          <div style={{ background: eigenOverschot > 0 ? "#f0faf4" : "#f7f6f2", borderRadius: 8, padding: "12px 14px", border: eigenOverschot > 0 ? `1px solid ${COLORS.success}30` : "none" }}>
+                            <RegelItem label="Kosten/mnd"           waarde={`${fmt(kostenTotaalPeriode / looptijdMnd)}/mnd`} sub={`${kostenInPeriode.length} posten`} />
+                            <RegelItem label="Afschrijving/mnd"     waarde={`${fmt(afschrMaandPeriode)}/mnd`} />
                             <Lijn />
-                            <RegelItem label="Bruto maandlast"   waarde={`${fmt(eigenKostenMaandPeriode)}/mnd`} />
+                            <RegelItem label="Bruto maandlast"      waarde={`${fmt(eigenKostenMaandPeriode)}/mnd`} />
                             <RegelItem label="Mob.vergoeding netto" waarde={`− ${fmt(mobNettoMaand)}/mnd`} kleur={COLORS.success} />
                             <RegelItem label="Km-vergoeding netto"  waarde={`− ${fmt(kmVergNetto)}/mnd`}   kleur={COLORS.success} />
-                            <Lijn />
-                            <Totaalrij netto={eigenNetto} totaal={eigenTotaalP} color={COLORS.primary} />
+                            <Totaalrij netto={eigenNetto} overschot={eigenOverschot} totaal={eigenTotaalP} color={COLORS.primary} />
                           </div>
                           {kostenInPeriode.length === 0 && (
                             <div style={{ marginTop: 6, fontSize: 11, color: COLORS.accent, padding: "5px 8px", background: "#fdf8f0", borderRadius: 6 }}>
@@ -1258,28 +1281,27 @@ export default function App() {
                         <div style={{ flex: 1, minWidth: 220 }}>
                           <KolLabel color="#8E44AD">💼 Zakelijk lease</KolLabel>
                           <div style={{ background: "#f7f6f2", borderRadius: 8, padding: "12px 14px" }}>
-                            <RegelItem label="Lease maandbedrag"      waarde={`${fmt(zakLeaseBruto)}/mnd`} />
+                            <RegelItem label="Lease maandbedrag"    waarde={`${fmt(zakLeaseBruto)}/mnd`} />
                             <RegelItem label="Mob.vergoeding (bruto)"
                               waarde={`− ${fmt(mobBrutoMaand)}/mnd`}
                               kleur={COLORS.success}
                               sub="werkgever → leasemij" />
                             <Lijn />
-                            <RegelItem label="Eigen bijdrage"          waarde={`${fmt(zakNaMobBruto)}/mnd`} />
-                            <RegelItem label={`Bijtelling belasting`}
+                            <RegelItem label="Eigen bijdrage"       waarde={`${fmt(zakNaMobBruto)}/mnd`} />
+                            <RegelItem label="Bijtelling belasting"
                               waarde={`+ ${fmt(bijtellingBelasting)}/mnd`}
                               kleur={COLORS.danger}
                               sub={`${state.bijtellingPct}% × ${state.belastingschijf}%`} />
-                            <RegelItem label="Km-vergoeding"           waarde="vervalt" kleur="#bbb" />
-                            <Lijn />
-                            <Totaalrij netto={zakNetto} totaal={zakTotaal} color="#8E44AD" />
+                            <RegelItem label="Km-vergoeding"        waarde="vervalt" kleur="#bbb" />
+                            <Totaalrij netto={zakNetto} overschot={0} totaal={zakTotaal} color="#8E44AD" />
                           </div>
                         </div>
 
                         {/* Privé lease */}
                         <div style={{ flex: 1, minWidth: 220 }}>
                           <KolLabel color={COLORS.lease}>📋 Privé lease</KolLabel>
-                          <div style={{ background: "#f7f6f2", borderRadius: 8, padding: "12px 14px" }}>
-                            <RegelItem label="Lease maandbedrag"         waarde={`${fmt(privLeaseBruto)}/mnd`} />
+                          <div style={{ background: privOverschot > 0 ? "#f0faf4" : "#f7f6f2", borderRadius: 8, padding: "12px 14px", border: privOverschot > 0 ? `1px solid ${COLORS.success}30` : "none" }}>
+                            <RegelItem label="Lease maandbedrag"    waarde={`${fmt(privLeaseBruto)}/mnd`} />
                             <RegelItem label="Mob.vergoeding netto"
                               waarde={`− ${fmt(mobNettoMaand)}/mnd`}
                               kleur={COLORS.success}
@@ -1288,37 +1310,59 @@ export default function App() {
                               waarde={`− ${fmt(kmVergNetto)}/mnd`}
                               kleur={COLORS.success}
                               sub="blijft van toepassing" />
-                            <RegelItem label="Bijtelling"                waarde="niet van toepassing" kleur="#bbb" />
-                            <Lijn />
-                            <Totaalrij netto={privNetto} totaal={privTotaal} color={COLORS.lease} />
+                            <RegelItem label="Bijtelling"           waarde="n.v.t." kleur="#bbb" />
+                            <Totaalrij netto={privNetto} overschot={privOverschot} totaal={privTotaal} color={COLORS.lease} />
                           </div>
                         </div>
                       </div>
 
                       {/* Visuele staafvergelijking */}
                       <div style={{ marginTop: "1.25rem" }}>
-                        {scenario.map(s => (
-                          <div key={s.label} style={{ marginBottom: 10 }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
-                              <span style={{ fontWeight: 500 }}>{s.label}</span>
-                              <span style={{ fontWeight: 600 }}>{fmt(s.netto)}/mnd · {fmt(s.totaal)} totaal</span>
+                        {scenario.map(s => {
+                          const heeftOverschot = s.overschot > 0;
+                          const maxBar = Math.max(maxNetto, 1);
+                          return (
+                            <div key={s.label} style={{ marginBottom: 12 }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
+                                <span style={{ fontWeight: 500 }}>{s.label}</span>
+                                <span style={{ fontWeight: 600, color: heeftOverschot ? COLORS.success : "#1a1a1a" }}>
+                                  {heeftOverschot
+                                    ? `+ ${fmt(s.overschot)}/mnd uitbetaald`
+                                    : `${fmt(s.netto)}/mnd · ${fmt(s.totaal)} totaal`}
+                                </span>
+                              </div>
+                              <div style={{ height: 10, background: "#f0ede8", borderRadius: 5, position: "relative" }}>
+                                {heeftOverschot ? (
+                                  // Groene balk voor overschot (omgekeerd = voordeel)
+                                  <div style={{ height: 10, borderRadius: 5, width: `${Math.min((s.overschot / maxBar) * 100, 100)}%`, background: COLORS.success }} />
+                                ) : (
+                                  <div style={{ height: 10, borderRadius: 5, width: `${(s.netto / maxBar) * 100}%`, background: s.color, transition: "width 0.3s" }} />
+                                )}
+                              </div>
                             </div>
-                            <div style={{ height: 10, background: "#f0ede8", borderRadius: 5 }}>
-                              <div style={{ height: 10, borderRadius: 5, width: `${(s.netto / maxNetto) * 100}%`, background: s.color, transition: "width 0.3s" }} />
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
+                        <div style={{ display: "flex", gap: 16, fontSize: 11, color: "#bbb", marginTop: 4 }}>
+                          <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                            <span style={{ width: 10, height: 10, background: COLORS.success, borderRadius: 2, display: "inline-block" }} />Groene balk = overschot (wordt uitbetaald)
+                          </span>
+                        </div>
                       </div>
 
                       {/* Conclusie */}
-                      <div style={{ marginTop: "0.75rem", padding: "14px 16px", background: "#f0faf4", borderRadius: 8 }}>
+                      <div style={{ marginTop: "0.875rem", padding: "14px 16px", background: "#f0faf4", borderRadius: 8 }}>
                         <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 6 }}>
-                          ✅ {goedkoopste.label} is het goedkoopst — {fmt(goedkoopste.netto)}/mnd netto
+                          {goedkoopste.overschot > 0
+                            ? `✅ ${goedkoopste.label} levert ${fmt(goedkoopste.overschot)}/mnd netto op`
+                            : `✅ ${goedkoopste.label} is het goedkoopst — ${fmt(goedkoopste.netto)}/mnd netto`}
                         </div>
                         <div style={{ fontSize: 13, color: "#666", display: "flex", gap: 20, flexWrap: "wrap" }}>
-                          {scenario.filter(s => s !== goedkoopste).map(s => (
-                            <span key={s.label}>{s.label}: <b>{fmt(s.netto - goedkoopste.netto)}/mnd duurder</b></span>
-                          ))}
+                          {effectief.filter(s => s !== goedkoopste).map(s => {
+                            const verschil = s.effectief - goedkoopste.effectief;
+                            return (
+                              <span key={s.label}>{s.label}: <b>{fmt(verschil)}/mnd duurder</b></span>
+                            );
+                          })}
                           <span>Periode: {vergStartDt.toLocaleDateString("nl-NL", { month: "short", year: "numeric" })} – {vergEindeDt.toLocaleDateString("nl-NL", { month: "short", year: "numeric" })}</span>
                         </div>
                       </div>
