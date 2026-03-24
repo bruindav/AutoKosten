@@ -328,6 +328,7 @@ export default function App() {
   const [openJaren, setOpenJaren]   = useState(() => new Set([String(new Date().getFullYear())]));
   const [analyseJaar, setAnalyseJaar] = useState("tot_nu");
   const [vergPeriodeStart, setVergPeriodeStart] = useState(() => new Date().toISOString().slice(0,10));
+  const [samPeriode, setSamPeriode] = useState("gem_aankoop");
   const [importText, setImportText] = useState("");
   const [importError, setImportError] = useState("");
   const [saveFlash, setSaveFlash]   = useState(false);
@@ -773,21 +774,83 @@ export default function App() {
             </div>
           </Card>
 
-          {/* Samenvatting */}
-          <Card>
-            <SectionTitle>Kostensamenvatting</SectionTitle>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-              <MetricCard label="Bezitsperiode"   value={`${bezitsjaren.toFixed(1)} jr`} sub={`${fmtN(totaleKm)} km totaal`} />
-              <MetricCard label="Afschrijving"    value={fmt(totaleAfschr)} sub={`${fmt(afschrJaar)}/jaar`} />
-              <MetricCard label="Gemaakte kosten" value={fmt(totaalKosten)} sub={`${fmt(totaalKosten/Math.max(verlopenJaren,1))}/jaar`} />
-              <MetricCard label="Alles samen"     value={fmt(totaalKosten+totaleAfschr)} sub={`${fmt(eigenMaand)}/maand`} color={COLORS.accent} />
-            </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <MetricCard label="Vast per km"     value={fmtC(kmVast)}     sub="onderhoud, verzek., afschr." />
-              <MetricCard label="Variabel per km" value={fmtC(kmVariabel)} sub="brandstof, parkeren" />
-              <MetricCard label="Totaal per km"   value={fmtC(kmTotaal)}   sub="alles meegerekend" color={COLORS.primary} />
-            </div>
-          </Card>
+          {/* Samenvatting met periode-dropdown */}
+          {(() => {
+            const nuJaar     = nu.getFullYear();
+            const aankoopJaarNum = aankoopDt.getFullYear();
+
+            // Bereken kosten voor de geselecteerde samenvattingsperiode
+            // Alleen historische jaren (t/m nu), niet toekomstige
+            const samPeriodes = [
+              { id: "huidig_jaar",   label: `Huidig jaar (${nuJaar})` },
+              { id: "gem_5jaar",     label: "Gemiddelde laatste 5 jaar" },
+              { id: "gem_aankoop",   label: "Gemiddelde sinds aankoop" },
+            ];
+
+            const kostenVoorSam = (periode) => {
+              if (periode === "huidig_jaar") {
+                return alleKosten.filter(k => k.datum?.slice(0,4) === String(nuJaar));
+              }
+              if (periode === "gem_5jaar") {
+                const vanaf = String(nuJaar - 4);
+                const tot   = String(nuJaar);
+                return alleKosten.filter(k => k.datum?.slice(0,4) >= vanaf && k.datum?.slice(0,4) <= tot);
+              }
+              // gem_aankoop: alles t/m nu
+              return alleKosten.filter(k => k.datum && k.datum <= nu.toISOString().slice(0,10));
+            };
+
+            const aantalJarenVoorSam = (periode) => {
+              if (periode === "huidig_jaar") return 1;
+              if (periode === "gem_5jaar")   return Math.min(5, Math.max(nuJaar - aankoopJaarNum, 1));
+              return Math.max(verlopenJaren, 1);
+            };
+
+            const samKosten      = kostenVoorSam(samPeriode);
+            const samTotaal      = samKosten.reduce((s, k) => s + Number(k.bedrag), 0);
+            const samJaren       = aantalJarenVoorSam(samPeriode);
+            const samPerJaar     = samTotaal / samJaren;
+            const samPerMaand    = samPerJaar / 12;
+            const samAfschrJaar  = afschrJaar; // afschrijving is al per jaar
+            const samTotaalMaand = samPerMaand + samAfschrJaar / 12;
+
+            const samVariabel = samKosten
+              .filter(k => COST_CATEGORIES.find(c => c.id === k.categorie)?.variabel)
+              .reduce((s, k) => s + Number(k.bedrag), 0);
+            const samVast     = samTotaal - samVariabel;
+            const samKmJaar   = state.jaarlijkseKm;
+            const samKmPeriode= samKmJaar * samJaren;
+            const samKmVast   = (samVast / samJaren + samAfschrJaar) / samKmJaar;
+            const samKmVar    = (samVariabel / samJaren) / samKmJaar;
+            const samKmTotaal = samTotaalMaand * 12 / samKmJaar;
+
+            return (
+              <Card>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.875rem", flexWrap: "wrap", gap: 8 }}>
+                  <SectionTitle style={{ margin: 0 }}>Kostensamenvatting</SectionTitle>
+                  <select value={samPeriode} onChange={e => setSamPeriode(e.target.value)}
+                    style={{ fontSize: 13, padding: "5px 10px", borderRadius: 6 }}>
+                    {samPeriodes.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+                  </select>
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+                  <MetricCard label="Bezitsperiode"     value={`${bezitsjaren.toFixed(1)} jr`}    sub={`${fmtN(totaleKm)} km totaal`} />
+                  <MetricCard label="Kosten in periode" value={fmt(samTotaal)}                    sub={`${samKosten.length} posten · ${samJaren.toFixed(1)} jaar`} />
+                  <MetricCard label="Kosten/jaar"       value={fmt(samPerJaar)}                   sub="excl. afschrijving" />
+                  <MetricCard label="Kosten/maand"      value={fmt(samTotaalMaand)}               sub="incl. afschr." color={COLORS.accent} />
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <MetricCard label="Vast per km"       value={fmtC(samKmVast)}     sub="incl. afschr." />
+                  <MetricCard label="Variabel per km"   value={fmtC(samKmVar)}      sub="brandstof, parkeren" />
+                  <MetricCard label="Totaal per km"     value={fmtC(samKmTotaal)}   sub="alles meegerekend" color={COLORS.primary} />
+                </div>
+                <div style={{ marginTop: 10, fontSize: 12, color: "#bbb" }}>
+                  ⓘ Toekomstige jaren zijn niet meegenomen — alleen werkelijk gemaakte kosten tot vandaag.
+                  Afschrijving is gebaseerd op de hele bezitsperiode ({fmt(afschrJaar)}/jaar).
+                </div>
+              </Card>
+            );
+          })()}
         </div>
       )}
 
@@ -1402,6 +1465,25 @@ export default function App() {
             <SectionTitle>Export naar CSV</SectionTitle>
             <textarea readOnly rows={Math.min(alleKosten.length + 2, 14)} value={exportCSV}
               style={{ width: "100%", fontFamily: "monospace", fontSize: 12, padding: 10, borderRadius: 6, border: "0.5px solid #e0ddd8", background: "#fafaf8", color: "#888", boxSizing: "border-box" }} />
+            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+              <button
+                onClick={() => {
+                  const blob = new Blob([exportCSV], { type: "text/csv;charset=utf-8;" });
+                  const url  = URL.createObjectURL(blob);
+                  const a    = document.createElement("a");
+                  const naam = `autokosten_${(state.merk || "auto").toLowerCase()}_${new Date().toISOString().slice(0,10)}.csv`;
+                  a.href = url; a.download = naam; a.click();
+                  URL.revokeObjectURL(url);
+                }}
+                style={{ background: COLORS.primary, color: "#fff", border: "none", borderRadius: 6, padding: "9px 18px", cursor: "pointer", fontWeight: 500 }}>
+                ⬇ Opslaan als bestand
+              </button>
+              <button
+                onClick={() => navigator.clipboard?.writeText(exportCSV)}
+                style={{ background: "none", border: "0.5px solid #e0ddd8", borderRadius: 6, padding: "9px 14px", cursor: "pointer", color: "#666" }}>
+                Kopiëren
+              </button>
+            </div>
           </Card>
           <Card>
             <SectionTitle>Data beheer</SectionTitle>
