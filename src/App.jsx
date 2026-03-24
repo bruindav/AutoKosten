@@ -1225,46 +1225,51 @@ export default function App() {
           {(() => {
             const looptijdMnd   = Number(state.leaseLooptijd) || 48;
             const looptijdJaren = looptijdMnd / 12;
+            const nuJaar        = nu.getFullYear();
 
-            // Eigen auto kosten over vergelijkingsperiode
-            // Kosten = werkelijk gemaakte kosten in die maanden + afschrijving over die periode
-            // Afschrijving: degressief, we gebruiken gemiddeld afschrJaar over bezitsperiode
-            const vergStartDt  = new Date(vergPeriodeStart);
-            const vergEindeDt  = new Date(vergPeriodeStart);
-            vergEindeDt.setMonth(vergEindeDt.getMonth() + looptijdMnd);
+            // ── Basis voor eigen auto kosten ──
+            // Drie modi: laatste jaar, gemiddelde 5 jaar, handmatig startdatum
+            const vergModus = vergPeriodeStart.startsWith("__")
+              ? vergPeriodeStart  // "__lastjaar" of "__gem5"
+              : "handmatig";
 
-            const vergStartStr = vergStartDt.toISOString().slice(0,10);
-            const vergEindeStr = vergEindeDt.toISOString().slice(0,10);
+            // Bereken gemiddelde maandkosten eigen auto op basis van modus
+            const berekenEigenMaandKosten = () => {
+              if (vergModus === "__lastjaar") {
+                // Volledig vorig kalenderjaar
+                const vorigjaar = String(nuJaar - 1);
+                const kp = alleKosten.filter(k => k.datum?.slice(0,4) === vorigjaar);
+                const tot = kp.reduce((s, k) => s + Number(k.bedrag), 0);
+                return { kostenMaand: tot / 12, bronLabel: `Kosten ${vorigjaar}`, aantalPosten: kp.length, bronJaren: 1 };
+              }
+              if (vergModus === "__gem5") {
+                // Gemiddelde laatste 5 volledig verlopen jaren (t/m vorig jaar)
+                const jaren = [];
+                for (let j = nuJaar - 1; j >= nuJaar - 5; j--) {
+                  const vj = String(j);
+                  const kp = alleKosten.filter(k => k.datum?.slice(0,4) === vj);
+                  if (kp.length > 0 || j > aankoopDt.getFullYear()) jaren.push({ jaar: vj, kp });
+                }
+                const totPosten = jaren.reduce((s, j) => s + j.kp.length, 0);
+                const totBedrag = jaren.reduce((s, j) => s + j.kp.reduce((ss, k) => ss + Number(k.bedrag), 0), 0);
+                const aantalJaren = Math.max(jaren.length, 1);
+                return { kostenMaand: totBedrag / aantalJaren / 12, bronLabel: `Gemiddelde ${jaren.length > 0 ? jaren[jaren.length-1].jaar : ""}–${nuJaar-1}`, aantalPosten: totPosten, bronJaren: aantalJaren };
+              }
+              // Handmatig: filter op basis van vergStartDt t/m vergEindeDt
+              const vergStartDt = new Date(vergPeriodeStart);
+              const vergEindeDt = new Date(vergPeriodeStart);
+              vergEindeDt.setMonth(vergEindeDt.getMonth() + looptijdMnd);
+              const kp = alleKosten.filter(k => k.datum && k.datum >= vergPeriodeStart && k.datum <= vergEindeDt.toISOString().slice(0,10));
+              const tot = kp.reduce((s, k) => s + Number(k.bedrag), 0);
+              return { kostenMaand: tot / looptijdMnd, bronLabel: `${vergStartDt.toLocaleDateString("nl-NL", { month: "short", year: "numeric" })} – ${vergEindeDt.toLocaleDateString("nl-NL", { month: "short", year: "numeric" })}`, aantalPosten: kp.length, bronJaren: looptijdJaren };
+            };
 
-            // Filter werkelijk gemaakte kosten in de vergelijkingsperiode
-            const kostenInPeriode = alleKosten.filter(k =>
-              k.datum && k.datum >= vergStartStr && k.datum <= vergEindeStr
-            );
-            const kostenTotaalPeriode = kostenInPeriode.reduce((s, k) => s + Number(k.bedrag), 0);
+            const { kostenMaand, bronLabel, aantalPosten, bronJaren } = berekenEigenMaandKosten();
 
-            // Afschrijving over vergelijkingsperiode (degressief: meer in vroege jaren)
-            // Positie binnen bezitsperiode
-            const startOffset = Math.max((vergStartDt - aankoopDt) / (365.25 * 864e5), 0);
-            const eindeOffset = startOffset + looptijdJaren;
-            const waardeStart = state.aankoopprijs - (startOffset / bezitsjaren) * totaleAfschr;
-            const waardeEinde = state.aankoopprijs - (Math.min(eindeOffset, bezitsjaren) / bezitsjaren) * totaleAfschr;
-            const afschrPeriode = Math.max(waardeStart - waardeEinde, 0);
-            const afschrMaandPeriode = afschrPeriode / looptijdMnd;
-
-            // Eigen auto maandkosten over vergelijkingsperiode
-            const eigenKostenMaandPeriode = (kostenTotaalPeriode / looptijdMnd) + afschrMaandPeriode;
-
-            // Netto eigen auto = bruto - vergoedingen
-            const eigenNettoMaandPeriode = eigenKostenMaandPeriode - totaalVergNetto;
-
-            // Lease netto (ongewijzigd)
-            const leaseNettoMaand = leaseMaandNetto;
-
-            const verschilMaand    = eigenNettoMaandPeriode - leaseNettoMaand;
-            const eigenGoedkoper   = verschilMaand < 0;
-            const totaalEigen      = eigenNettoMaandPeriode * looptijdMnd;
-            const totaalLease      = leaseNettoMaand * looptijdMnd;
-            const totaalVerschil   = Math.abs(totaalEigen - totaalLease);
+            // Afschrijving: gebruik gemiddeld per jaar (eenvoudig, transparant)
+            const afschrMaandPeriode = afschrJaar / 12;
+            const eigenKostenMaandPeriode = kostenMaand + afschrMaandPeriode;
+            const eigenNettoMaandPeriode  = eigenKostenMaandPeriode - totaalVergNetto;
 
             const RegelItem = ({ label, waarde, kleur, sub }) => (
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
@@ -1275,24 +1280,49 @@ export default function App() {
 
             return (
               <Card>
-                <SectionTitle>Vergelijkingsperiode</SectionTitle>
+                <SectionTitle>Vergelijkingsbasis eigen auto</SectionTitle>
 
-                {/* Periode-instelling */}
-                <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap", marginBottom: "1.25rem", padding: "12px 14px", background: "#f7f6f2", borderRadius: 8 }}>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <label style={{ fontSize: 12, color: "#999" }}>Startdatum vergelijking</label>
-                    <input type="date" value={vergPeriodeStart}
-                      onChange={e => setVergPeriodeStart(e.target.value)}
-                      style={{ width: 150 }} />
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <label style={{ fontSize: 12, color: "#999" }}>Looptijd</label>
-                    <div style={{ fontSize: 14, fontWeight: 500, padding: "7px 0" }}>
-                      {looptijdMnd} maanden ({looptijdJaren.toFixed(1)} jaar) → t/m {vergEindeDt.toLocaleDateString("nl-NL", { month: "short", year: "numeric" })}
+                {/* Modus-knoppen */}
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: "1rem" }}>
+                  {[
+                    { id: "__lastjaar", label: `Laatste jaar (${nuJaar - 1})` },
+                    { id: "__gem5",     label: "Gemiddelde laatste 5 jaar" },
+                    { id: "handmatig", label: "Handmatig periode" },
+                  ].map(m => (
+                    <button key={m.id}
+                      onClick={() => setVergPeriodeStart(m.id === "handmatig" ? new Date().toISOString().slice(0,10) : m.id)}
+                      style={{
+                        padding: "6px 14px", fontSize: 13, borderRadius: 20,
+                        border: vergModus === m.id ? `1.5px solid ${COLORS.primary}` : "0.5px solid #e0ddd8",
+                        background: vergModus === m.id ? COLORS.primary : "#fff",
+                        color: vergModus === m.id ? "#fff" : "#666",
+                        cursor: "pointer", fontWeight: vergModus === m.id ? 600 : 400,
+                      }}>{m.label}</button>
+                  ))}
+                </div>
+
+                {/* Handmatige startdatum (alleen tonen als handmatig gekozen) */}
+                {vergModus === "handmatig" && (
+                  <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: "1rem", padding: "10px 14px", background: "#f7f6f2", borderRadius: 8, flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <label style={{ fontSize: 12, color: "#999" }}>Startdatum</label>
+                      <input type="date" value={vergPeriodeStart} onChange={e => setVergPeriodeStart(e.target.value)} style={{ width: 150 }} />
+                    </div>
+                    <div style={{ fontSize: 13, color: "#888" }}>
+                      t/m {(() => { const d = new Date(vergPeriodeStart); d.setMonth(d.getMonth() + looptijdMnd); return d.toLocaleDateString("nl-NL", { month: "short", year: "numeric" }); })()}
+                      <span style={{ color: "#bbb", marginLeft: 8 }}>({looptijdMnd} mnd)</span>
                     </div>
                   </div>
-                  <div style={{ fontSize: 12, color: "#bbb", paddingBottom: 8 }}>
-                    Looptijd instellen bij Lease parameters ↑
+                )}
+
+                {/* Samenvatting basis */}
+                <div style={{ padding: "10px 14px", background: "#f0f4f8", borderRadius: 8, marginBottom: "1.25rem", fontSize: 13 }}>
+                  <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "center" }}>
+                    <span style={{ fontWeight: 500 }}>Basis: {bronLabel}</span>
+                    <span style={{ color: "#888" }}>{aantalPosten} posten · {bronJaren.toFixed(1)} jaar</span>
+                    <span>Kosten: <b>{fmt(kostenMaand)}/mnd</b></span>
+                    <span>+ Afschrijving: <b>{fmt(afschrMaandPeriode)}/mnd</b></span>
+                    <span style={{ fontWeight: 600, color: COLORS.primary }}>= Bruto: {fmt(eigenKostenMaandPeriode)}/mnd</span>
                   </div>
                 </div>
 
@@ -1375,7 +1405,9 @@ export default function App() {
                         <div style={{ flex: 1, minWidth: 220 }}>
                           <KolLabel color={COLORS.primary}>🚗 Eigen auto</KolLabel>
                           <div style={{ background: eigenOverschot > 0 ? "#f0faf4" : "#f7f6f2", borderRadius: 8, padding: "12px 14px", border: eigenOverschot > 0 ? `1px solid ${COLORS.success}30` : "none" }}>
-                            <RegelItem label="Kosten/mnd"           waarde={`${fmt(kostenTotaalPeriode / looptijdMnd)}/mnd`} sub={`${kostenInPeriode.length} posten`} />
+                            <RegelItem label="Kosten/mnd"
+                              waarde={`${fmt(kostenMaand)}/mnd`}
+                              sub={bronLabel} />
                             <RegelItem label="Afschrijving/mnd"     waarde={`${fmt(afschrMaandPeriode)}/mnd`} />
                             <Lijn />
                             <RegelItem label="Bruto maandlast"      waarde={`${fmt(eigenKostenMaandPeriode)}/mnd`} />
@@ -1383,7 +1415,7 @@ export default function App() {
                             <RegelItem label="Km-vergoeding netto"  waarde={`− ${fmt(kmVergNetto)}/mnd`}   kleur={COLORS.success} />
                             <Totaalrij netto={eigenNetto} overschot={eigenOverschot} totaal={eigenTotaalP} color={COLORS.primary} />
                           </div>
-                          {kostenInPeriode.length === 0 && (
+                          {aantalPosten === 0 && (
                             <div style={{ marginTop: 6, fontSize: 11, color: COLORS.accent, padding: "5px 8px", background: "#fdf8f0", borderRadius: 6 }}>
                               ⚠ Geen kosten voor deze periode — alleen afschrijving.
                             </div>
@@ -1476,7 +1508,7 @@ export default function App() {
                               <span key={s.label}>{s.label}: <b>{fmt(verschil)}/mnd duurder</b></span>
                             );
                           })}
-                          <span>Periode: {vergStartDt.toLocaleDateString("nl-NL", { month: "short", year: "numeric" })} – {vergEindeDt.toLocaleDateString("nl-NL", { month: "short", year: "numeric" })}</span>
+                          <span>Basis: {bronLabel} · looptijd {looptijdMnd} mnd</span>
                         </div>
                       </div>
                     </>
@@ -1484,7 +1516,7 @@ export default function App() {
                 })()}
 
                 <div style={{ marginTop: 10, fontSize: 12, color: "#bbb", lineHeight: 1.6 }}>
-                  ⓘ Eigen auto kosten = werkelijk ingevoerde posten in de periode + afschrijving. Zijn er geen posten voor die periode, dan wordt alleen de afschrijving meegenomen.
+                  ⓘ Eigen auto kosten zijn gebaseerd op {bronLabel} ({aantalPosten} posten), aangevuld met gemiddelde afschrijving.
                   Lease is een schatting — vraag altijd een offerte op. Belastingschijf: {state.belastingschijf}%.
                 </div>
               </Card>
