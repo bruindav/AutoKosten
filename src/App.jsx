@@ -256,55 +256,99 @@ function EditRij({ kost, onSave, onCancel }) {
   );
 }
 
-// Jaargroep voor de kostenlijst
+// Categorie-rij binnen een jaar: inklapbaar, toont posten als open
+function CatGroep({ catId, posten, editId, setEditId, onSave, onVerwijder }) {
+  const [open, setOpen] = useState(false);
+  const cat    = COST_CATEGORIES.find(c => c.id === catId);
+  const totaal = posten.reduce((s, k) => s + Number(k.bedrag), 0);
+  const auto   = posten.filter(k => k.automatisch).length;
+  return (
+    <div>
+      {/* Categorie-header */}
+      <div
+        onClick={() => setOpen(o => !o)}
+        style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 12px 7px 28px", background: "#fafaf8", borderBottom: "0.5px solid #f0ede8", cursor: "pointer", userSelect: "none" }}
+      >
+        <span style={{ fontSize: 11, color: open ? COLORS.accent : "#bbb", transform: `rotate(${open ? 90 : 0}deg)`, display: "inline-block", transition: "transform 0.15s", width: 10 }}>▶</span>
+        <span style={{ fontSize: 13 }}>{cat?.icon} {cat?.label || catId}</span>
+        <span style={{ fontSize: 11, color: "#bbb" }}>{posten.length} posten{auto > 0 ? ` (${auto} auto)` : ""}</span>
+        <span style={{ marginLeft: "auto", fontWeight: 500, fontSize: 13 }}>{fmt(totaal)}</span>
+      </div>
+      {/* Posten binnen categorie */}
+      {open && posten.map(k => {
+        if (editId === k.id) {
+          return (
+            <table key={k.id} style={{ width: "100%", borderCollapse: "collapse" }}>
+              <tbody><EditRij kost={k} onSave={onSave} onCancel={() => setEditId(null)} /></tbody>
+            </table>
+          );
+        }
+        return (
+          <div key={k.id} style={{ display: "flex", alignItems: "center", gap: 0, padding: "6px 12px 6px 52px", borderBottom: "0.5px solid #f5f4f0", background: k.automatisch ? "#f9fdf9" : "#fff", fontSize: 13 }}>
+            <span style={{ color: "#aaa", width: 100, flexShrink: 0 }}>{k.datum}</span>
+            <span style={{ fontWeight: 500, width: 80, flexShrink: 0 }}>{fmt(k.bedrag)}</span>
+            <span style={{ color: "#bbb", width: 80, flexShrink: 0 }}>{k.km ? fmtN(k.km) : "—"}</span>
+            <span style={{ color: "#999", flex: 1 }}>
+              {k.omschrijving || "—"}
+              {k.automatisch && <span style={{ marginLeft: 6, fontSize: 11, color: COLORS.success, background: "#e8f8ef", borderRadius: 3, padding: "1px 5px" }}>auto</span>}
+            </span>
+            <span style={{ flexShrink: 0, width: 52, textAlign: "right" }}>
+              {!k.automatisch && (
+                <>
+                  <button onClick={() => setEditId(k.id)} title="Bewerken"
+                    style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.primary, fontSize: 13, marginRight: 2 }}>✏</button>
+                  <button onClick={() => onVerwijder(k.id)} title="Verwijderen"
+                    style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.danger, fontSize: 13 }}>✕</button>
+                </>
+              )}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// Jaargroep: niveau 1 (jaar) → niveau 2 (categorie) → niveau 3 (posten)
 function JaarGroep({ jaar, posten, openJaren, setOpenJaren, editId, setEditId, onSave, onVerwijder }) {
   const open   = openJaren.has(jaar);
   const totaal = posten.reduce((s, k) => s + Number(k.bedrag), 0);
   const auto   = posten.filter(k => k.automatisch).length;
+
+  // Groepeer posten per categorie, in volgorde van COST_CATEGORIES
+  const perCat = {};
+  posten.forEach(k => { if (!perCat[k.categorie]) perCat[k.categorie] = []; perCat[k.categorie].push(k); });
+  const catVolgorde = COST_CATEGORIES.map(c => c.id).filter(id => perCat[id]);
+  // Eventuele onbekende categorieën achteraan
+  Object.keys(perCat).forEach(id => { if (!catVolgorde.includes(id)) catVolgorde.push(id); });
+
   return (
     <div style={{ marginBottom: 4 }}>
       {/* Jaar-header */}
       <div
         onClick={() => setOpenJaren(prev => { const s = new Set(prev); s.has(jaar) ? s.delete(jaar) : s.add(jaar); return s; })}
-        style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", background: "#f7f6f2", borderRadius: open ? "8px 8px 0 0" : 8, cursor: "pointer", userSelect: "none" }}
+        style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", background: "#f0ede8", borderRadius: open ? "8px 8px 0 0" : 8, cursor: "pointer", userSelect: "none" }}
       >
         <span style={{ fontSize: 13, color: open ? COLORS.primary : "#666", transform: `rotate(${open ? 90 : 0}deg)`, display: "inline-block", transition: "transform 0.15s", width: 14 }}>▶</span>
         <span style={{ fontWeight: 600, fontSize: 14 }}>{jaar}</span>
         <span style={{ fontSize: 12, color: "#999" }}>{posten.length} posten{auto > 0 ? ` (${auto} auto)` : ""}</span>
         <span style={{ marginLeft: "auto", fontWeight: 600, fontSize: 14 }}>{fmt(totaal)}</span>
       </div>
-      {/* Posten */}
+      {/* Categorieën */}
       {open && (
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, border: "0.5px solid #e8e6e0", borderTop: "none", borderRadius: "0 0 8px 8px", overflow: "hidden" }}>
-          <tbody>
-            {posten.map(k => {
-              const cat = COST_CATEGORIES.find(c => c.id === k.categorie);
-              if (editId === k.id) return <EditRij key={k.id} kost={k} onSave={onSave} onCancel={() => setEditId(null)} />;
-              return (
-                <tr key={k.id} style={{ borderBottom: "0.5px solid #f0ede8", background: k.automatisch ? "#f9fdf9" : "transparent" }}>
-                  <td style={{ padding: "7px 10px", color: "#888", width: 110 }}>{k.datum}</td>
-                  <td style={{ padding: "7px 8px", width: 180 }}>{cat?.icon} {cat?.label || k.categorie}</td>
-                  <td style={{ padding: "7px 8px", fontWeight: 500, width: 90 }}>{fmt(k.bedrag)}</td>
-                  <td style={{ padding: "7px 8px", color: "#bbb", width: 90 }}>{k.km ? fmtN(k.km) : "—"}</td>
-                  <td style={{ padding: "7px 8px", color: "#999" }}>
-                    {k.omschrijving || "—"}
-                    {k.automatisch && <span style={{ marginLeft: 6, fontSize: 11, color: COLORS.success, background: "#e8f8ef", borderRadius: 3, padding: "1px 5px" }}>auto</span>}
-                  </td>
-                  <td style={{ padding: "7px 8px", whiteSpace: "nowrap", width: 60 }}>
-                    {!k.automatisch && (
-                      <>
-                        <button onClick={() => setEditId(k.id)} title="Bewerken"
-                          style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.primary, fontSize: 14, marginRight: 2 }}>✏</button>
-                        <button onClick={() => onVerwijder(k.id)} title="Verwijderen"
-                          style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.danger, fontSize: 14 }}>✕</button>
-                      </>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <div style={{ border: "0.5px solid #e8e6e0", borderTop: "none", borderRadius: "0 0 8px 8px", overflow: "hidden" }}>
+          {catVolgorde.map(catId => (
+            <CatGroep
+              key={catId}
+              catId={catId}
+              posten={perCat[catId]}
+              editId={editId}
+              setEditId={setEditId}
+              onSave={onSave}
+              onVerwijder={onVerwijder}
+            />
+          ))}
+        </div>
       )}
     </div>
   );
@@ -956,7 +1000,13 @@ export default function App() {
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: "1rem", flexWrap: "wrap" }}>
                   <span style={{ fontSize: 12, color: "#999", flexShrink: 0 }}>Periode:</span>
                   {periodes.map(p => (
-                    <button key={p} onClick={() => setAnalyseJaar(p)}
+                    <button key={p} onClick={() => {
+                      setAnalyseJaar(p);
+                      // Als een specifiek jaar gekozen: dat jaar openklappen, rest dicht
+                      if (p !== "tot_nu" && p !== "tot_verkoop") {
+                        setOpenJaren(new Set([p]));
+                      }
+                    }}
                       style={{
                         padding: "4px 12px", fontSize: 12, borderRadius: 20,
                         border: analyseJaar === p ? `1.5px solid ${COLORS.primary}` : "0.5px solid #e0ddd8",
