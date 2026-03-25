@@ -207,7 +207,10 @@ function defaultState() {
     leaseLooptijd: 48, leaseKm: 15000, leaseAanbetaling: 0,
     leaseStijgingPct: 10,
     gemiddeldVerbruik: "",
+    tankLiter: null,
+    kmPerTank: null,
     brandstofPrijs: "",
+    brandstofJaarBedrag: null,
     mrbAutomatisch: false,
     mrbWerkelijkMaand: "",
     verzekeringAutomatisch: false,
@@ -881,34 +884,129 @@ export default function App() {
                     {/* Verbruik + brandstofprijs */}
                     {(() => {
                       const isElektrisch = (state.brandstof || "").toLowerCase().includes("elektr");
-                      const verbruikLabel = isElektrisch ? "Verbruik (kWh/km)" : "Verbruik (1/km)";
-                      const prijsLabel    = isElektrisch ? "Prijs per kWh (€)" : "Prijs per liter (€)";
+                      const verbruikLabel = isElektrisch ? "Verbruik (km/kWh)" : "Verbruik (km/liter)";
                       const verbruik = Number(state.gemiddeldVerbruik) || 0;
                       const prijs    = Number(state.brandstofPrijs) || 0;
                       const kmJaar   = Number(state.jaarlijkseKm) || 0;
-                      const brandstofJaar = verbruik > 0 && prijs > 0 && kmJaar > 0
-                        ? Math.round(kmJaar * verbruik * prijs) : 0;
+                      // km/l formule: kmJaar / verbruik * prijs
+                      const brandstofJaar = state.brandstofJaarBedrag
+                        || (verbruik > 0 && prijs > 0 && kmJaar > 0
+                          ? Math.round(kmJaar / verbruik * prijs) : 0);
                       return (
                         <>
                           <div style={{ borderTop: "0.5px solid #f0ede8", margin: "10px 0 8px", paddingTop: 8, fontSize: 11, color: "#bbb", textTransform: "uppercase", letterSpacing: "0.06em" }}>
                             {isElektrisch ? "Energieverbruik" : "Brandstofverbruik"}
                           </div>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                            <label style={{ fontSize: 13, color: "#666", width: 90, flexShrink: 0 }}>{verbruikLabel}</label>
-                            <input type="number" step="0.01" placeholder={isElektrisch ? "bijv. 0.18" : "bijv. 0.055"} value={state.gemiddeldVerbruik}
-                              onChange={e => set("gemiddeldVerbruik", e.target.value)} style={{ flex: 1, minWidth: 0 }} />
-                          </div>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                            <label style={{ fontSize: 13, color: "#666", width: 90, flexShrink: 0 }}>{prijsLabel}</label>
-                            <input type="number" step="0.01" placeholder={isElektrisch ? "bijv. 0.28" : "bijv. 1.85"} value={state.brandstofPrijs}
-                              onChange={e => set("brandstofPrijs", e.target.value)} style={{ flex: 1, minWidth: 0 }} />
-                          </div>
-                          {brandstofJaar > 0 && (
-                            <div style={{ padding: "7px 10px", background: "#f0faf4", borderRadius: 6, fontSize: 12, color: "#27500A" }}>
-                              Schatting: <b>{fmt(brandstofJaar)}/jaar</b> · {fmt(Math.round(brandstofJaar / 12))}/maand
-                              <span style={{ color: "#bbb", marginLeft: 6 }}>({fmtN(kmJaar)} km × {state.gemiddeldVerbruik} × €{state.brandstofPrijs})</span>
+
+                          {isElektrisch ? (
+                            /* Elektrisch: km/kWh */
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                              <label style={{ fontSize: 13, color: "#666", width: 90, flexShrink: 0 }}>Verbruik (km/kWh)</label>
+                              <input type="number" step="0.1" placeholder="bijv. 6.5" value={state.gemiddeldVerbruik}
+                                onChange={e => set("gemiddeldVerbruik", e.target.value)} style={{ flex: 1, minWidth: 0 }} />
+                            </div>
+                          ) : (
+                            /* Benzine/Diesel: km/l of via tank */
+                            <div style={{ marginBottom: 8 }}>
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
+                                <div style={{ display: "flex", flexDirection: "column", gap: 3, flex: 1 }}>
+                                  <label style={{ fontSize: 11, color: "#bbb" }}>Verbruik (km/liter)</label>
+                                  <input type="number" step="0.1" placeholder="bijv. 18"
+                                    value={state.gemiddeldVerbruik}
+                                    onChange={e => set("gemiddeldVerbruik", e.target.value)}
+                                    style={{ width: "100%" }} />
+                                </div>
+                                <div style={{ display: "flex", alignItems: "center", fontSize: 12, color: "#bbb", paddingTop: 16 }}>of</div>
+                                <div style={{ display: "flex", flexDirection: "column", gap: 3, flex: 1 }}>
+                                  <label style={{ fontSize: 11, color: "#bbb" }}>Tank (liter)</label>
+                                  <input type="number" step="1" placeholder="bijv. 70"
+                                    value={state.tankLiter || ""}
+                                    onChange={e => {
+                                      set("tankLiter", e.target.value ? Number(e.target.value) : null);
+                                    }}
+                                    style={{ width: "100%" }} />
+                                </div>
+                                <div style={{ display: "flex", flexDirection: "column", gap: 3, flex: 1 }}>
+                                  <label style={{ fontSize: 11, color: "#bbb" }}>Km per tank</label>
+                                  <input type="number" step="10" placeholder="bijv. 1400"
+                                    value={state.kmPerTank || ""}
+                                    onChange={e => {
+                                      const kpt = e.target.value ? Number(e.target.value) : null;
+                                      set("kmPerTank", kpt);
+                                      // Bereken km/l automatisch
+                                      if (kpt && state.tankLiter) set("gemiddeldVerbruik", (kpt / state.tankLiter).toFixed(1));
+                                    }}
+                                    style={{ width: "100%" }} />
+                                </div>
+                              </div>
+                              {state.tankLiter && state.kmPerTank && (
+                                <div style={{ fontSize: 12, color: COLORS.success }}>
+                                  → {(Number(state.kmPerTank) / Number(state.tankLiter)).toFixed(1)} km/liter
+                                </div>
+                              )}
                             </div>
                           )}
+
+                          {/* Brandstofprijs */}
+                          <div style={{ marginBottom: 8 }}>
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "flex-end" }}>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 3, flex: 1 }}>
+                                <label style={{ fontSize: 11, color: "#bbb" }}>
+                                  {isElektrisch ? "Prijs/kWh (€)" : "Prijs/liter (€)"}
+                                </label>
+                                <input type="number" step="0.01"
+                                  placeholder={isElektrisch ? "bijv. 0.28" : "bijv. 1.85"}
+                                  value={state.brandstofPrijs}
+                                  onChange={e => set("brandstofPrijs", e.target.value)}
+                                  style={{ width: "100%" }} />
+                              </div>
+                              {!isElektrisch && (
+                                <button
+                                  onClick={async () => {
+                                    try {
+                                      const bf = (state.brandstof || "").toLowerCase();
+                                      const soort = bf.includes("diesel") ? "T001247" : "T001245"; // CBS: benzine E95 of diesel
+                                      const res = await fetch(`https://opendata.cbs.nl/ODataApi/OData/84991NED/TypedDataSet?$top=2&$orderby=Perioden desc&$filter=BrandstofSoort eq '${soort}'`);
+                                      const json = await res.json();
+                                      const prijs = json?.value?.[0]?.GemiddeldePompprijs_1;
+                                      if (prijs) set("brandstofPrijs", (prijs / 100).toFixed(3));
+                                    } catch {
+                                      // silent
+                                    }
+                                  }}
+                                  style={{ padding: "7px 10px", fontSize: 11, background: "none", border: "0.5px solid #e0ddd8", borderRadius: 6, cursor: "pointer", color: "#666", whiteSpace: "nowrap" }}>
+                                  ↻ CBS-prijs
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Jaarbedrag optie */}
+                          <div style={{ display: "flex", flexDirection: "column", gap: 3, marginBottom: 8 }}>
+                            <label style={{ fontSize: 11, color: "#bbb" }}>Of: werkelijk jaarbedrag (€)</label>
+                            <input type="number" step="10" placeholder="bijv. 2400 (overschrijft berekening)"
+                              value={state.brandstofJaarBedrag || ""}
+                              onChange={e => set("brandstofJaarBedrag", e.target.value ? Number(e.target.value) : null)}
+                              style={{ width: "100%" }} />
+                          </div>
+
+                          {/* Resultaat */}
+                          {(() => {
+                            const jaarBedrag = state.brandstofJaarBedrag
+                              || (verbruik > 0 && prijs > 0 && kmJaar > 0 ? Math.round(kmJaar / verbruik * prijs) : 0);
+                            if (!jaarBedrag) return null;
+                            return (
+                              <div style={{ padding: "7px 10px", background: "#f0faf4", borderRadius: 6, fontSize: 12, color: "#27500A" }}>
+                                <b>{fmt(jaarBedrag)}/jaar</b> · {fmt(Math.round(jaarBedrag / 12))}/maand
+                                {!state.brandstofJaarBedrag && verbruik > 0 && (
+                                  <span style={{ color: "#bbb", marginLeft: 6 }}>
+                                    ({fmtN(kmJaar)} km ÷ {verbruik} km/l × €{prijs})
+                                  </span>
+                                )}
+                                {state.brandstofJaarBedrag && <span style={{ color: "#bbb", marginLeft: 6 }}>werkelijk opgegeven</span>}
+                              </div>
+                            );
+                          })()}
                         </>
                       );
                     })()}
