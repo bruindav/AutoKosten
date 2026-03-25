@@ -153,7 +153,10 @@ function defaultState() {
     mrbAutomatisch: false,
     mrbWerkelijkMaand: "",
     verzekeringAutomatisch: false,
+    verzekeringType: "allrisk",
     verzekeringJaren: [],
+    pechhulpType: "",
+    pechhulpJaar: null,
     huidigeKmStand: null,
     mobiliteitBrutoMaand: "",
     kmVergTarief: "0.23",
@@ -510,7 +513,30 @@ export default function App() {
     ? genereerVerzekeringPosten(state.aankoopdatum, state.verwachteVerkoopdatum, state.verzekeringJaren)
     : [];
 
-  const alleKosten = [...state.kosten, ...mrbPosten, ...verzPosten];
+  // Pechhulp: één post per jaar automatisch genereren
+  const pechhulpPosten = (() => {
+    if (!state.pechhulpType || !state.pechhulpJaar || state.pechhulpJaar <= 0) return [];
+    const start = new Date(state.aankoopdatum);
+    const einde = new Date(state.verwachteVerkoopdatum);
+    const posten = [];
+    for (let j = start.getFullYear(); j <= einde.getFullYear(); j++) {
+      const d = new Date(j, start.getMonth(), 1);
+      if (d < start || d > einde) continue;
+      posten.push({
+        id: `pech_${j}`,
+        datum: d.toISOString().slice(0,10),
+        categorie: "verzekering",
+        bedrag: state.pechhulpJaar,
+        km: null,
+        omschrijving: `Pechhulp ${state.pechhulpType.includes("anwb") ? "ANWB" : "pechhulp"} ${j}`,
+        automatisch: true,
+        type: "pechhulp",
+      });
+    }
+    return posten;
+  })();
+
+  const alleKosten = [...state.kosten, ...mrbPosten, ...verzPosten, ...pechhulpPosten];
   const latestKmStand = alleKosten.filter(k => k.km && Number(k.km) > 0).reduce((max, k) => Math.max(max, Number(k.km)), 0);
 
   const totaalKosten   = alleKosten.reduce((s, k) => s + Number(k.bedrag), 0);
@@ -736,11 +762,6 @@ export default function App() {
                       <Row key={key} label={lbl}><input value={state[key]} onChange={e => set(key, e.target.value)} style={{ flex: 1 }} /></Row>
                     ))}
                     <Row label="Gewicht (kg)"><input type="number" value={state.gewichtKg} onChange={e => set("gewichtKg", e.target.value)} style={{ flex: 1 }} /></Row>
-                    <Row label="Provincie">
-                      <select value={state.provincie} onChange={e => set("provincie", e.target.value)} style={{ flex: 1 }}>
-                        {Object.keys(MRB_OPCENTEN).map(p => <option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
-                      </select>
-                    </Row>
                   </div>
                   <div style={{ flex: 1, minWidth: 220 }}>
                     <div style={{ fontSize: 12, color: "#bbb", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Financieel</div>
@@ -766,15 +787,23 @@ export default function App() {
             },
             {
               key: "mrb", titel: "Motorrijtuigenbelasting",
-              toon: !!(mrbSchatting || state.mrbWerkelijkMaand),
+              toon: !!(mrbSchatting || state.mrbWerkelijkMaand || state.gewichtKg),
               inhoud: (
                 <div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
-                    {mrbSchatting && <MetricCard label="Schatting /kwartaal" value={fmt(mrbSchatting.kwartaal)} sub="op basis van gewicht" />}
-                    {mrbSchatting && <MetricCard label="Schatting /jaar" value={fmt(mrbSchatting.jaarlijks)} sub="excl. correcties" />}
-                    {mrbToonBedrag && <MetricCard label="Werkelijk /maand" value={fmt(mrbToonBedrag)} sub={state.mrbWerkelijkMaand ? "door jou opgegeven" : "schatting"} color={state.mrbWerkelijkMaand ? COLORS.primary : "#999"} />}
-                    {mrbToonBedrag && <MetricCard label="Werkelijk /kwartaal" value={fmt(mrbToonBedrag * 3)} sub={state.mrbWerkelijkMaand ? "door jou opgegeven" : "schatting"} color={state.mrbWerkelijkMaand ? COLORS.accent : "#999"} />}
-                  </div>
+                  {/* Provincie hoort hier */}
+                  <Row label="Provincie">
+                    <select value={state.provincie} onChange={e => set("provincie", e.target.value)} style={{ flex: 1 }}>
+                      {Object.keys(MRB_OPCENTEN).map(p => <option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
+                    </select>
+                  </Row>
+                  {mrbSchatting && (
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+                      <MetricCard label="Schatting /kwartaal" value={fmt(mrbSchatting.kwartaal)} sub="op basis van gewicht" />
+                      <MetricCard label="Schatting /jaar" value={fmt(mrbSchatting.jaarlijks)} sub="excl. correcties" />
+                      {mrbToonBedrag && <MetricCard label="Werkelijk /maand" value={fmt(mrbToonBedrag)} sub={state.mrbWerkelijkMaand ? "door jou opgegeven" : "schatting"} color={state.mrbWerkelijkMaand ? COLORS.primary : "#999"} />}
+                      {mrbToonBedrag && <MetricCard label="Werkelijk /kwartaal" value={fmt(mrbToonBedrag * 3)} sub={state.mrbWerkelijkMaand ? "door jou opgegeven" : "schatting"} color={state.mrbWerkelijkMaand ? COLORS.accent : "#999"} />}
+                    </div>
+                  )}
                   <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: "#f7f6f2", borderRadius: 8, marginBottom: 10, flexWrap: "wrap" }}>
                     <label style={{ fontSize: 13, color: "#666", flexShrink: 0 }}>Werkelijk bedrag per maand (€)</label>
                     <input type="number" placeholder="bijv. 180" value={state.mrbWerkelijkMaand} onChange={e => set("mrbWerkelijkMaand", e.target.value)} style={{ width: 110 }} />
@@ -787,54 +816,95 @@ export default function App() {
                     label="MRB kwartaalposten automatisch toevoegen"
                     sub={state.mrbAutomatisch ? `${mrbPosten.length} posten van ${fmt(mrbKwartaal)}/kwartaal` : `Voegt ${fmt(mrbKwartaal)}/kwartaal automatisch toe`} />
                   <div style={{ fontSize: 12, color: "#bbb", marginTop: 6 }}>
-                    ⓘ Schatting: {fmtN(state.gewichtKg)} kg · {state.brandstof} · {state.provincie}. Exacte bedragen via belastingdienst.nl.
+                    ⓘ Schatting op basis van {fmtN(state.gewichtKg)} kg · {state.brandstof} · {state.provincie}. Exacte bedragen via belastingdienst.nl.
                   </div>
                 </div>
               ),
             },
             {
-              key: "verzekering", titel: "Verzekering",
+              key: "verzekering", titel: "Verzekering & pechhulp",
               inhoud: (
                 <div>
-                  <Toggle checked={state.verzekeringAutomatisch} onChange={v => set("verzekeringAutomatisch", v)}
-                    label="Verzekering automatisch splitsen in maandposten"
-                    sub="Voer per jaar een jaarbedrag in — de app maakt 12 maandposten aan" />
-                  {state.verzekeringAutomatisch && (
-                    <div style={{ marginTop: 10 }}>
-                      {state.verzekeringJaren.length > 0 && (
-                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, marginBottom: 10 }}>
-                          <thead><tr style={{ borderBottom: "0.5px solid #e8e6e0" }}>
-                            {["Jaar","Jaarbedrag","Per maand",""].map(h => <th key={h} style={{ textAlign: "left", padding: "5px 8px", fontWeight: 500, color: "#bbb" }}>{h}</th>)}
-                          </tr></thead>
-                          <tbody>
-                            {state.verzekeringJaren.map(v => (
-                              <tr key={v.startJaar} style={{ borderBottom: "0.5px solid #f0ede8" }}>
-                                <td style={{ padding: "6px 8px", fontWeight: 500 }}>{v.startJaar}</td>
-                                <td style={{ padding: "6px 8px" }}>{fmt(v.bedrag)}</td>
-                                <td style={{ padding: "6px 8px", color: "#888" }}>{fmt(Math.round(v.bedrag / 12))}</td>
-                                <td style={{ padding: "6px 8px" }}>
-                                  <button onClick={() => set("verzekeringJaren", state.verzekeringJaren.filter(x => x.startJaar !== v.startJaar))}
-                                    style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.danger, fontSize: 14 }}>✕</button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      )}
-                      <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                          <label style={{ fontSize: 12, color: "#999" }}>Jaar</label>
-                          <input type="number" value={nieuwVerzJaar} onChange={e => setNieuwVerzJaar(e.target.value)} style={{ width: 80 }} />
+                  {/* Verzekering hoofddekking */}
+                  <div style={{ marginBottom: 14 }}>
+                    <div style={{ fontSize: 12, color: "#bbb", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Autoverzekering</div>
+                    <Row label="Type dekking" wide>
+                      <select value={state.verzekeringType || "allrisk"} onChange={e => set("verzekeringType", e.target.value)} style={{ flex: 1 }}>
+                        <option value="allrisk">All risk (volledig casco)</option>
+                        <option value="beperktcasco">Beperkt casco (BC)</option>
+                        <option value="wettelijk">WA (wettelijke aansprakelijkheid)</option>
+                        <option value="waplusbs">WA+ (bijzondere schade)</option>
+                      </select>
+                    </Row>
+                    <Toggle checked={state.verzekeringAutomatisch} onChange={v => set("verzekeringAutomatisch", v)}
+                      label="Premie automatisch splitsen in maandposten"
+                      sub="Voer per jaar een jaarbedrag in — de app maakt 12 maandposten aan" />
+                    {state.verzekeringAutomatisch && (
+                      <div style={{ marginTop: 10 }}>
+                        {state.verzekeringJaren.length > 0 && (
+                          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, marginBottom: 10 }}>
+                            <thead><tr style={{ borderBottom: "0.5px solid #e8e6e0" }}>
+                              {["Jaar","Jaarbedrag","Per maand",""].map(h => <th key={h} style={{ textAlign: "left", padding: "5px 8px", fontWeight: 500, color: "#bbb" }}>{h}</th>)}
+                            </tr></thead>
+                            <tbody>
+                              {state.verzekeringJaren.map(v => (
+                                <tr key={v.startJaar} style={{ borderBottom: "0.5px solid #f0ede8" }}>
+                                  <td style={{ padding: "6px 8px", fontWeight: 500 }}>{v.startJaar}</td>
+                                  <td style={{ padding: "6px 8px" }}>{fmt(v.bedrag)}</td>
+                                  <td style={{ padding: "6px 8px", color: "#888" }}>{fmt(Math.round(v.bedrag / 12))}</td>
+                                  <td style={{ padding: "6px 8px" }}>
+                                    <button onClick={() => set("verzekeringJaren", state.verzekeringJaren.filter(x => x.startJaar !== v.startJaar))}
+                                      style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.danger, fontSize: 14 }}>✕</button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                        <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                            <label style={{ fontSize: 12, color: "#999" }}>Jaar</label>
+                            <input type="number" value={nieuwVerzJaar} onChange={e => setNieuwVerzJaar(e.target.value)} style={{ width: 80 }} />
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                            <label style={{ fontSize: 12, color: "#999" }}>Jaarbedrag (€)</label>
+                            <input type="number" placeholder="bijv. 1200" value={nieuwVerzBedrag} onChange={e => setNieuwVerzBedrag(e.target.value)} onKeyDown={e => e.key === "Enter" && voegVerzJaarToe()} style={{ width: 150 }} />
+                          </div>
+                          <button onClick={voegVerzJaarToe} style={{ background: COLORS.primary, color: "#fff", border: "none", borderRadius: 6, padding: "9px 14px", cursor: "pointer", fontWeight: 500 }}>+ Toevoegen</button>
                         </div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                          <label style={{ fontSize: 12, color: "#999" }}>Jaarbedrag (€)</label>
-                          <input type="number" placeholder="bijv. 1200" value={nieuwVerzBedrag} onChange={e => setNieuwVerzBedrag(e.target.value)} onKeyDown={e => e.key === "Enter" && voegVerzJaarToe()} style={{ width: 150 }} />
-                        </div>
-                        <button onClick={voegVerzJaarToe} style={{ background: COLORS.primary, color: "#fff", border: "none", borderRadius: 6, padding: "9px 14px", cursor: "pointer", fontWeight: 500 }}>+ Toevoegen</button>
+                        {verzPosten.length > 0 && <div style={{ marginTop: 8, fontSize: 12, color: COLORS.success }}>✓ {verzPosten.length} maandposten toegevoegd</div>}
                       </div>
-                      {verzPosten.length > 0 && <div style={{ marginTop: 8, fontSize: 12, color: COLORS.success }}>✓ {verzPosten.length} maandposten toegevoegd</div>}
-                    </div>
-                  )}
+                    )}
+                  </div>
+
+                  {/* Pechhulp */}
+                  <div style={{ borderTop: "0.5px solid #f0ede8", paddingTop: 14 }}>
+                    <div style={{ fontSize: 12, color: "#bbb", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Pechhulpverzekering</div>
+                    <Row label="Aanbieder" wide>
+                      <select value={state.pechhulpType || ""} onChange={e => set("pechhulpType", e.target.value)} style={{ flex: 1 }}>
+                        <option value="">Geen pechhulp</option>
+                        <option value="anwb_basis">ANWB Wegenwacht Basis</option>
+                        <option value="anwb_compleet">ANWB Wegenwacht Compleet</option>
+                        <option value="anwb_europa">ANWB Wegenwacht Europa</option>
+                        <option value="aa_basis">AutoMobiel Hulp Basis</option>
+                        <option value="verzekering">Via autoverzekering</option>
+                        <option value="anders">Anders</option>
+                      </select>
+                    </Row>
+                    {state.pechhulpType && state.pechhulpType !== "" && (
+                      <>
+                        <Row label="Jaarpremie (€)" wide>
+                          <input type="number" placeholder="bijv. 95" value={state.pechhulpJaar || ""} onChange={e => set("pechhulpJaar", e.target.value ? Number(e.target.value) : null)} style={{ flex: 1 }} />
+                        </Row>
+                        {state.pechhulpJaar > 0 && (
+                          <div style={{ padding: "8px 12px", background: "#f7f6f2", borderRadius: 8, fontSize: 13, marginTop: 4 }}>
+                            {fmt(state.pechhulpJaar)}/jaar · {fmt(Math.round(state.pechhulpJaar / 12))}/maand
+                            <span style={{ color: "#bbb", marginLeft: 8, fontSize: 11 }}>— wordt als aparte post in kostenlijst getoond</span>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
                 </div>
               ),
             },
@@ -843,24 +913,50 @@ export default function App() {
               inhoud: (
                 <div>
                   <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap" }}>
+                    {/* Mobiliteitsvergoeding */}
                     <div style={{ flex: 1, minWidth: 220 }}>
                       <div style={{ fontSize: 12, color: "#bbb", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Mobiliteitsvergoeding</div>
-                      <Row label="Bruto/maand (€)" wide><input type="number" placeholder="bijv. 300" value={state.mobiliteitBrutoMaand} onChange={e => set("mobiliteitBrutoMaand", e.target.value)} style={{ flex: 1 }} /></Row>
-                      <Row label="Belastingschijf (%)" wide><input type="number" step="0.1" placeholder="36.9" value={state.belastingschijf} onChange={e => set("belastingschijf", e.target.value)} style={{ flex: 1 }} /></Row>
+                      <Row label="Bruto/maand (€)" wide>
+                        <input type="number" placeholder="bijv. 300" value={state.mobiliteitBrutoMaand} onChange={e => set("mobiliteitBrutoMaand", e.target.value)} style={{ flex: 1 }} />
+                      </Row>
+                      <Row label="Belastingschijf" wide>
+                        <select value={state.belastingschijf}
+                          onChange={e => set("belastingschijf", Number(e.target.value))}
+                          style={{ flex: 1 }}>
+                          <option value={36.97}>36,97% (schijf 1, tot ~€75.518)</option>
+                          <option value={49.50}>49,50% (schijf 2, boven ~€75.518)</option>
+                        </select>
+                        <input type="number" step="0.1" value={state.belastingschijf}
+                          onChange={e => set("belastingschijf", Number(e.target.value))}
+                          style={{ width: 70, marginLeft: 6 }}
+                          title="Handmatig aanpassen" />
+                      </Row>
                       {mobBrutoMaand > 0 && (
-                        <div style={{ padding: "8px 12px", background: "#f0faf4", borderRadius: 8, fontSize: 13 }}>
-                          <b>{fmt(mobBrutoMaand)}</b> bruto → <b style={{ color: COLORS.success }}>{fmt(mobNettoMaand)}</b> netto/mnd
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "#f0faf4", borderRadius: 8, fontSize: 13 }}>
+                          <span><b>{fmt(mobBrutoMaand)}</b> bruto</span>
+                          <span style={{ color: "#bbb" }}>→</span>
+                          <span><b style={{ color: COLORS.success }}>{fmt(mobNettoMaand)}</b> netto/mnd</span>
                         </div>
                       )}
                     </div>
+                    {/* Km-vergoeding */}
                     <div style={{ flex: 1, minWidth: 220 }}>
                       <div style={{ fontSize: 12, color: "#bbb", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>Km-vergoeding</div>
-                      <Row label="Tarief (€/km)" wide><input type="number" step="0.01" placeholder="0.23" value={state.kmVergTarief} onChange={e => set("kmVergTarief", e.target.value)} style={{ flex: 1 }} /></Row>
-                      <Row label="Km/maand werk" wide><input type="number" placeholder="bijv. 800" value={state.kmVergKmMaand} onChange={e => set("kmVergKmMaand", e.target.value)} style={{ flex: 1 }} /></Row>
-                      <Row label="Of: totaal/mnd (€)" wide><input type="number" placeholder="overschrijft tarief×km" value={state.kmVergMaandTotaal} onChange={e => set("kmVergMaandTotaal", e.target.value)} style={{ flex: 1 }} /></Row>
+                      <Row label="Tarief (€/km)" wide>
+                        <input type="number" step="0.01" placeholder="0.23" value={state.kmVergTarief} onChange={e => set("kmVergTarief", e.target.value)} style={{ flex: 1 }} />
+                      </Row>
+                      <Row label="Km/maand werk" wide>
+                        <input type="number" placeholder="bijv. 800" value={state.kmVergKmMaand} onChange={e => set("kmVergKmMaand", e.target.value)} style={{ flex: 1 }} />
+                      </Row>
+                      <Row label="Of: totaal/mnd (€)" wide>
+                        <input type="number" placeholder="overschrijft tarief×km" value={state.kmVergMaandTotaal} onChange={e => set("kmVergMaandTotaal", e.target.value)} style={{ flex: 1 }} />
+                      </Row>
                       {kmVergBruto > 0 && (
-                        <div style={{ padding: "8px 12px", background: "#f0faf4", borderRadius: 8, fontSize: 13 }}>
-                          <b>{fmt(kmVergBruto)}</b> bruto → <b style={{ color: COLORS.success }}>{fmt(kmVergNetto)}</b> netto/mnd
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "#f0faf4", borderRadius: 8, fontSize: 13 }}>
+                          <span><b>{fmt(kmVergBruto)}</b> bruto</span>
+                          {belastbaar > 0 && <span style={{ color: "#bbb", fontSize: 11 }}>({fmt(vrijgesteld)} vrij · {fmt(belastbaar)} belast)</span>}
+                          <span style={{ color: "#bbb" }}>→</span>
+                          <span><b style={{ color: COLORS.success }}>{fmt(kmVergNetto)}</b> netto/mnd</span>
                         </div>
                       )}
                     </div>
