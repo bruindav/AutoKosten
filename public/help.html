@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Help — AutoKosten</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; background: #f5f4f0; font-family: system-ui, -apple-system, sans-serif; color: #1a1a1a; }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+    .back { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #1B4F72; text-decoration: none; margin-bottom: 2rem; }
+    .back:hover { text-decoration: underline; }
+    h1 { font-size: 24px; font-weight: 600; margin: 0 0 0.5rem; }
+    .sub { font-size: 13px; color: #999; margin-bottom: 2rem; }
+    h2 { font-size: 17px; font-weight: 600; margin: 2.5rem 0 0.5rem; color: #1B4F72; border-bottom: 0.5px solid #e0ddd8; padding-bottom: 6px; }
+    h3 { font-size: 14px; font-weight: 600; margin: 1.25rem 0 0.4rem; color: #333; }
+    p, li { font-size: 14px; line-height: 1.75; color: #444; }
+    ul, ol { padding-left: 1.25rem; margin: 0.5rem 0; }
+    .card { background: #fff; border: 0.5px solid #e0ddd8; border-radius: 12px; padding: 1.25rem; margin-bottom: 1rem; }
+    .tip { background: #f0faf4; border-left: 3px solid #27AE60; padding: 10px 14px; border-radius: 0 8px 8px 0; font-size: 13px; color: #27500A; margin: 0.75rem 0; }
+    .formula { background: #f7f6f2; border-radius: 6px; padding: 8px 12px; font-family: monospace; font-size: 13px; color: #333; margin: 0.5rem 0; }
+    .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 1rem 0; }
+    .tab-badge { background: #1B4F72; color: #fff; border-radius: 20px; padding: 4px 12px; font-size: 12px; font-weight: 500; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 0.75rem 0; }
+    th { text-align: left; padding: 6px 10px; background: #f7f6f2; font-weight: 500; color: #666; }
+    td { padding: 6px 10px; border-top: 0.5px solid #f0ede8; color: #444; }
+    footer { margin-top: 3rem; padding-top: 1rem; border-top: 0.5px solid #e0ddd8; font-size: 12px; color: #bbb; display: flex; gap: 16px; flex-wrap: wrap; }
+    footer a { color: #1B4F72; text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+    .toc { background: #fff; border: 0.5px solid #e0ddd8; border-radius: 12px; padding: 1.25rem; margin-bottom: 2rem; }
+    .toc a { display: block; font-size: 13px; color: #1B4F72; text-decoration: none; padding: 3px 0; }
+    .toc a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <a href="/AutoKosten/" class="back">← Terug naar de app</a>
+    <h1>Help & uitleg</h1>
+    <p class="sub">Hoe werkt AutoKosten en hoe worden berekeningen gemaakt?</p>
+
+    <div class="toc">
+      <strong style="font-size:13px; color:#666; display:block; margin-bottom:6px;">Inhoudsopgave</strong>
+      <a href="#tabs">De tabbladen</a>
+      <a href="#mijn-auto">Mijn auto — gegevens invoeren</a>
+      <a href="#kosten">Kosten — posten bijhouden</a>
+      <a href="#berekeningen">Hoe worden kosten berekend?</a>
+      <a href="#mrb">Motorrijtuigenbelasting (MRB)</a>
+      <a href="#vergoedingen">Vergoedingen werkgever</a>
+      <a href="#lease">Lease-vergelijking</a>
+      <a href="#meerdere-autos">Meerdere auto's</a>
+      <a href="#import-export">Import en export</a>
+    </div>
+
+    <!-- Tabs -->
+    <h2 id="tabs">De tabbladen</h2>
+    <div class="card">
+      <div class="tabs">
+        <span class="tab-badge">🚗 Auto</span>
+        <span class="tab-badge">📊 Kosten</span>
+        <span class="tab-badge">📈 Grafiek</span>
+        <span class="tab-badge">🔄 Lease</span>
+        <span class="tab-badge">⬆ Import</span>
+        <span class="tab-badge">⚙ Beheer</span>
+      </div>
+      <table>
+        <tr><th>Tab</th><th>Wat doe je hier</th></tr>
+        <tr><td><strong>🚗 Auto</strong></td><td>Voertuiggegevens, financiën, MRB, verzekering en werkgeversvergoedingen invoeren</td></tr>
+        <tr><td><strong>📊 Kosten</strong></td><td>Kosten per jaar bijhouden en analyseren op categorie en periode</td></tr>
+        <tr><td><strong>📈 Grafiek</strong></td><td>Kostenverloop en afschrijving visualiseren over tijd</td></tr>
+        <tr><td><strong>🔄 Lease</strong></td><td>Vergelijken: eigen auto vs. zakelijk lease vs. privé lease</td></tr>
+        <tr><td><strong>⬆ Import</strong></td><td>Kosten importeren via CSV of exporteren</td></tr>
+        <tr><td><strong>⚙ Beheer</strong></td><td>Auto's toevoegen/verwijderen en gegevens wissen</td></tr>
+      </table>
+    </div>
+
+    <!-- Mijn auto -->
+    <h2 id="mijn-auto">Mijn auto — gegevens invoeren</h2>
+    <div class="card">
+      <h3>Kenteken opzoeken</h3>
+      <p>Voer je kenteken in en klik op "Opzoeken via RDW". De app haalt automatisch merk, model, bouwjaar, brandstof, gewicht en cataloguswaarde op via de openbare RDW-dataset. Je kunt de velden daarna handmatig aanpassen.</p>
+
+      <h3>Financiële gegevens</h3>
+      <p>Vul de aankoopprijs, aankoopdatum, verwachte verkoopdatum en verwachte verkoopprijs in. Deze worden gebruikt voor de afschrijvingsberekening en de lease-vergelijking.</p>
+      <div class="tip">Tip: De "verwachte verkoopprijs" is wat je denkt te ontvangen als je de auto verkoopt. Kijk op Autotrader of ANWB Koerslijst voor een indicatie.</div>
+
+      <h3>Km-stand</h3>
+      <p>De app detecteert automatisch de hoogste km-stand uit je ingevoerde kostenposten. Je kunt deze overnemen of handmatig aanpassen.</p>
+    </div>
+
+    <!-- Kosten -->
+    <h2 id="kosten">Kosten — posten bijhouden</h2>
+    <div class="card">
+      <p>Op de Kosten-tab kun je alle uitgaven voor je auto bijhouden. Per post voer je in: datum, categorie, bedrag, km-stand (optioneel) en omschrijving.</p>
+
+      <h3>Categorieën</h3>
+      <table>
+        <tr><th>Categorie</th><th>Type</th><th>Voorbeelden</th></tr>
+        <tr><td>Brandstof / Laden</td><td>Variabel</td><td>Tanken, laadpas</td></tr>
+        <tr><td>Onderhoud & APK</td><td>Vast</td><td>Grote/kleine beurt, APK</td></tr>
+        <tr><td>Reparaties</td><td>Vast</td><td>Onverwachte reparaties</td></tr>
+        <tr><td>Verzekering</td><td>Vast</td><td>Premie, pechhulp</td></tr>
+        <tr><td>Wegenbelasting (MRB)</td><td>Vast</td><td>Kwartaalbetaling</td></tr>
+        <tr><td>Banden</td><td>Vast</td><td>Zomer/winterbanden</td></tr>
+        <tr><td>Parkeren & tol</td><td>Variabel</td><td>Parkeerkosten, tol</td></tr>
+        <tr><td>Wassen & poetsen</td><td>Vast</td><td>Wasstraat, polijsten</td></tr>
+        <tr><td>Overig</td><td>Vast</td><td>Accessoires, keuring</td></tr>
+      </table>
+
+      <h3>Automatische posten</h3>
+      <p>Als je MRB-kwartaalposten of verzekering automatisch hebt ingeschakeld (via de Auto-tab), verschijnen deze als <span style="background:#e8f8ef;color:#27500A;padding:1px 6px;border-radius:3px;font-size:12px;">auto</span> gemarkeerde regels in de kostenlijst. Deze zijn niet handmatig te bewerken, maar kun je uitzetten via de Auto-tab.</p>
+
+      <h3>Kosten per periode bekijken</h3>
+      <p>Gebruik de dropdown bovenaan de Kosten-tab om te schakelen tussen een specifiek jaar, "Tot nu" of de "Hele periode". De grafiek per categorie en de kosten-per-km berekening passen zich automatisch aan.</p>
+    </div>
+
+    <!-- Berekeningen -->
+    <h2 id="berekeningen">Hoe worden kosten berekend?</h2>
+    <div class="card">
+      <h3>Afschrijving</h3>
+      <p>De afschrijving wordt berekend als het verschil tussen aankoopprijs en verwachte verkoopprijs, gedeeld over de bezitsperiode:</p>
+      <div class="formula">Afschrijving per jaar = (aankoopprijs − verwachte verkoopprijs) / bezitsjaren</div>
+      <p>De afschrijvingscurve op de Grafiek-tab gebruikt een degressief model: meer waardedaling in de eerste jaren.</p>
+
+      <h3>Kosten per km</h3>
+      <p>De kosten per km worden berekend op basis van het geschatte aantal gereden kilometers (jaarlijkse km × verstreken jaren):</p>
+      <div class="formula">Kosten per km (vast) = (vaste kosten + afschrijving) / gereden km</div>
+      <div class="formula">Kosten per km (variabel) = variabele kosten / gereden km</div>
+
+      <h3>Maandlast</h3>
+      <div class="formula">Maandlast = (totale kosten + afschrijving per jaar) / verstreken maanden</div>
+    </div>
+
+    <!-- MRB -->
+    <h2 id="mrb">Motorrijtuigenbelasting (MRB)</h2>
+    <div class="card">
+      <p>De MRB-schatting is gebaseerd op de officiële staffel van de Belastingdienst (2024), het gewicht van het voertuig, het brandstoftype en de provinciale opcenten.</p>
+      <h3>Hoe werkt het?</h3>
+      <ol>
+        <li>Op basis van het voertuiggewicht wordt een basiskwartaalbedrag opgezocht in de belastingstaffel</li>
+        <li>Voor diesel wordt een vaste toeslag van ~€96/kwartaal opgeteld</li>
+        <li>Het basisbedrag wordt verhoogd met de provinciale opcenten (bijv. Utrecht: 112,8%)</li>
+      </ol>
+      <div class="tip">Het werkelijke bedrag kan afwijken. Vul bij "Werkelijk bedrag per maand" je eigen kwartaalnota in voor een nauwkeurige berekening.</div>
+      <p>Als je de automatische MRB-posten inschakelt, genereert de app één post per kwartaal voor de hele bezitsperiode.</p>
+    </div>
+
+    <!-- Vergoedingen -->
+    <h2 id="vergoedingen">Vergoedingen werkgever</h2>
+    <div class="card">
+      <h3>Mobiliteitsvergoeding</h3>
+      <p>Een bruto mobiliteitsvergoeding wordt netto berekend door loonbelasting af te trekken op basis van jouw belastingschijf:</p>
+      <div class="formula">Netto vergoeding = bruto × (1 − belastingschijf%)</div>
+
+      <h3>Km-vergoeding</h3>
+      <p>De km-vergoeding tot €0,23/km is belastingvrij (2024). Het deel daarboven wordt belast:</p>
+      <div class="formula">Netto km-vergoeding = vrijgesteld deel + (belastbaar deel × (1 − schijf%))</div>
+      <p>Je kunt een tarief + aantal km/maand invoeren, of direct een maandtotaal. Als je een maandtotaal invult, overschrijft dat de tarief×km-berekening.</p>
+
+      <h3>Effect op vergelijking</h3>
+      <p>In de lease-vergelijking werken de vergoedingen anders per scenario:</p>
+      <ul>
+        <li><strong>Eigen auto:</strong> mobiliteitsvergoeding en km-vergoeding worden netto afgetrokken van de autokosten</li>
+        <li><strong>Zakelijk lease:</strong> de mobiliteitsvergoeding wordt bruto ingezet om de leaseprijs te betalen; km-vergoeding vervalt</li>
+        <li><strong>Privé lease:</strong> mobiliteitsvergoeding netto aftrekken; km-vergoeding blijft van toepassing</li>
+      </ul>
+    </div>
+
+    <!-- Lease -->
+    <h2 id="lease">Lease-vergelijking</h2>
+    <div class="card">
+      <p>De lease-vergelijking toont drie scenario's naast elkaar over een instelbare vergelijkingsperiode.</p>
+
+      <h3>Leasebedrag berekening</h3>
+      <p>Het geschatte privé-leasebedrag is gebaseerd op een marktmodel:</p>
+      <div class="formula">Maandbedrag ≈ afschrijving/mnd + rente/mnd + onderhoud/mnd + verzekering/mnd</div>
+      <p>Dit is een <strong>schatting</strong>. Werkelijke bedragen kunnen sterk afwijken. Vraag altijd een offerte op.</p>
+
+      <h3>Bijtelling (zakelijk lease)</h3>
+      <p>Bij zakelijk lease betaal je belasting over de bijtelling:</p>
+      <div class="formula">Belasting bijtelling = cataloguswaarde × bijtelling% / 12 × belastingschijf%</div>
+      <p>Het bijtellingspercentage is afhankelijk van het brandstoftype (16% voor volledig elektrisch, 22% standaard).</p>
+
+      <h3>Vergelijkingsperiode</h3>
+      <p>Kies een startdatum voor de vergelijking. De looptijd wordt overgenomen uit de lease-parameters. Voor de eigen auto worden uitsluitend de kosten uit die periode meegenomen, aangevuld met de gemiddelde afschrijving.</p>
+    </div>
+
+    <!-- Meerdere auto's -->
+    <h2 id="meerdere-autos">Meerdere auto's</h2>
+    <div class="card">
+      <p>Je kunt meerdere auto-profielen aanmaken via het tabblad <strong>⚙ Beheer</strong>. Elk profiel heeft zijn eigen gegevens, kostenlijst en instellingen. Schakelen tussen auto's doe je via de pill-knoppen bovenaan de pagina.</p>
+      <div class="tip">Handig voor: eigen auto + auto partner, of om verschillende scenario's naast elkaar te houden.</div>
+    </div>
+
+    <!-- Import/export -->
+    <h2 id="import-export">Import en export</h2>
+    <div class="card">
+      <h3>CSV importeren</h3>
+      <p>Kosten kun je in bulk importeren via het tabblad <strong>⬆ Import</strong>. Gebruik het formaat:</p>
+      <div class="formula">datum;categorie;bedrag;km;omschrijving</div>
+      <p>Voorbeeld:</p>
+      <div class="formula">2024-03-15;brandstof;85;62000;Tankbeurt Shell<br>2024-06-01;verzekering;950;;Jaarlijkse premie</div>
+      <p>Geldige categorieën: brandstof, onderhoud, reparatie, verzekering, wegenbelasting, banden, parkeren, wassen, overig.</p>
+
+      <h3>Exporteren</h3>
+      <p>Alle kostenposten (inclusief automatische MRB en verzekering) kunnen worden geëxporteerd als CSV-bestand via de knop "⬇ Opslaan als bestand". Dit bestand kun je openen in Excel of een andere spreadsheetapplicatie.</p>
+    </div>
+
+    <footer>
+      <span>AutoKosten — persoonlijk gebruik</span>
+      <a href="/AutoKosten/privacy.html">Privacy</a>
+      <a href="/AutoKosten/disclaimer.html">Disclaimer</a>
+      <a href="/AutoKosten/">Terug naar de app</a>
+    </footer>
+  </div>
+</body>
+</html>

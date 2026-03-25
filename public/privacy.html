@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy — AutoKosten</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; background: #f5f4f0; font-family: system-ui, -apple-system, sans-serif; color: #1a1a1a; }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+    .back { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #1B4F72; text-decoration: none; margin-bottom: 2rem; }
+    .back:hover { text-decoration: underline; }
+    h1 { font-size: 24px; font-weight: 600; margin: 0 0 0.5rem; }
+    .sub { font-size: 13px; color: #999; margin-bottom: 2rem; }
+    h2 { font-size: 16px; font-weight: 600; margin: 2rem 0 0.5rem; color: #1B4F72; }
+    p, li { font-size: 14px; line-height: 1.75; color: #444; }
+    ul { padding-left: 1.25rem; margin: 0.5rem 0; }
+    .card { background: #fff; border: 0.5px solid #e0ddd8; border-radius: 12px; padding: 1.25rem; margin-bottom: 1rem; }
+    .highlight { background: #f0faf4; border-left: 3px solid #27AE60; padding: 10px 14px; border-radius: 0 8px 8px 0; font-size: 14px; color: #27500A; margin: 1rem 0; }
+    footer { margin-top: 3rem; padding-top: 1rem; border-top: 0.5px solid #e0ddd8; font-size: 12px; color: #bbb; display: flex; gap: 16px; flex-wrap: wrap; }
+    footer a { color: #1B4F72; text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <a href="/AutoKosten/" class="back">← Terug naar de app</a>
+    <h1>Privacy & gegevensopslag</h1>
+    <p class="sub">Laatst bijgewerkt: maart 2025</p>
+
+    <div class="highlight">
+      Alle gegevens die je invoert worden uitsluitend lokaal in je eigen browser opgeslagen. Er worden geen gegevens verstuurd naar externe servers of derden.
+    </div>
+
+    <div class="card">
+      <h2>Wat de app opslaat</h2>
+      <p>AutoKosten slaat de volgende gegevens op in de <strong>localStorage</strong> van je browser, uitsluitend op jouw apparaat:</p>
+      <ul>
+        <li>Voertuiggegevens: kenteken, merk, model, bouwjaar, brandstof, gewicht</li>
+        <li>Financiële gegevens: aankoopprijs, aankoopdatum, verwachte verkoopprijs en -datum</li>
+        <li>Kostenposten: datum, categorie, bedrag, kilometerstand en omschrijving</li>
+        <li>Verzekerings- en pechhulpgegevens per jaar</li>
+        <li>Werkgeversvergoedingen: bedragen voor mobiliteitsvergoeding en km-vergoeding</li>
+        <li>Lease-parameters: cataloguswaarde, looptijd, km-limiet</li>
+        <li>Instellingen: provincie, belastingschijf, automatische posten aan/uit</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>Waar worden de gegevens opgeslagen</h2>
+      <p>Alle gegevens worden opgeslagen in de <code>localStorage</code> van je webbrowser, onder de sleutel <code>autokosten_v3_multi</code>. Dit is een standaard browserfunctie waarbij data lokaal op jouw apparaat wordt bewaard.</p>
+      <ul>
+        <li><strong>Geen server:</strong> er is geen backend, database of server betrokken.</li>
+        <li><strong>Geen cloud:</strong> gegevens worden niet gesynchroniseerd naar een cloudopslag.</li>
+        <li><strong>Geen cookies:</strong> de app maakt geen gebruik van tracking-cookies.</li>
+        <li><strong>Geen analytics:</strong> er worden geen gebruiksstatistieken bijgehouden.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>Gegevens uit de RDW</h2>
+      <p>Wanneer je een kenteken opzoekt, stuurt de app een verzoek naar de openbare RDW-dataset (<code>opendata.rdw.nl</code>). Dit is een publieke API van de Rijksdienst voor het Wegverkeer. De app verstuurt alleen het kentekennummer en ontvangt voertuiggegevens terug. Er worden geen persoonsgegevens uitgewisseld.</p>
+    </div>
+
+    <div class="card">
+      <h2>Gegevens verwijderen</h2>
+      <p>Je kunt jouw gegevens op elk moment verwijderen via het tabblad <strong>⚙ Beheer</strong> in de app. Kies "Wis huidige auto" of "Alles wissen". Gegevens worden ook verwijderd als je de browsergeschiedenis of sitegegevens wist via je browserinstellingen.</p>
+    </div>
+
+    <div class="card">
+      <h2>Hosting</h2>
+      <p>De app wordt gehost via <strong>GitHub Pages</strong>. GitHub kan standaard webserverlogboeken bijhouden (zoals IP-adressen en tijdstempels van verzoeken). Dit valt buiten de controle van de app-maker. Raadpleeg het <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement" target="_blank">privacybeleid van GitHub</a> voor meer informatie.</p>
+    </div>
+
+    <footer>
+      <span>AutoKosten — persoonlijk gebruik</span>
+      <a href="/AutoKosten/disclaimer.html">Disclaimer</a>
+      <a href="/AutoKosten/help.html">Help</a>
+      <a href="/AutoKosten/">Terug naar de app</a>
+    </footer>
+  </div>
+</body>
+</html>
