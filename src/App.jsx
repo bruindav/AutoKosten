@@ -27,6 +27,61 @@ const COST_CATEGORIES = [
   { id: "overig",         label: "Overig",               variabel: false, icon: "📦" },
 ];
 
+// ─── Referentiekosten per segment en leeftijdsklasse ────────────────────────
+// Gebaseerd op ANWB-richtlijnen en branchegemiddelden (2024, excl. brandstof en MRB)
+// Bedragen zijn jaarlijkse kosten in euro's
+const REF_SEGMENTEN = [
+  { id: "klein",    label: "Klein (A/B)",       voorbeeld: "Polo, Yaris, 208",   catalogusMax: 22000 },
+  { id: "compact",  label: "Compact (C)",        voorbeeld: "Golf, Focus, 308",   catalogusMax: 35000 },
+  { id: "midden",   label: "Middenklasse (D)",   voorbeeld: "Passat, Mondeo",     catalogusMax: 50000 },
+  { id: "suv",      label: "SUV / Crossover",    voorbeeld: "Tiguan, CR-V, 3008", catalogusMax: 60000 },
+  { id: "premium",  label: "Premium (E+)",       voorbeeld: "BMW 5, Audi A6",     catalogusMax: 999999 },
+];
+
+// Referentie: [onderhoud, reparatie, banden, wassen] per jaar
+// Per leeftijdsklasse: 0-3jr, 3-6jr, 6-10jr, 10+jr
+const REF_KOSTEN = {
+  //                0-3jr   3-6jr   6-10jr  10+jr
+  klein:   { onderhoud: [450,  600,  750,  950],  reparatie: [100,  250,  500,  800],  banden: [180, 200, 220, 240], wassen: [120,120,120,120] },
+  compact: { onderhoud: [550,  750,  950, 1200],  reparatie: [120,  300,  650, 1100],  banden: [220, 250, 270, 290], wassen: [150,150,150,150] },
+  midden:  { onderhoud: [700,  950, 1200, 1500],  reparatie: [150,  400,  800, 1300],  banden: [280, 310, 330, 360], wassen: [180,180,180,180] },
+  suv:     { onderhoud: [800, 1050, 1350, 1700],  reparatie: [180,  450,  900, 1400],  banden: [350, 380, 400, 430], wassen: [180,180,180,180] },
+  premium: { onderhoud: [1200,1600, 2000, 2600],  reparatie: [300,  700, 1400, 2200],  banden: [450, 500, 550, 600], wassen: [200,200,200,200] },
+};
+
+function bepaalSegment(cataloguswaarde, merk) {
+  const cat = Number(cataloguswaarde) || 0;
+  const m   = (merk || "").toLowerCase();
+  // Premium merken
+  if (["bmw","audi","mercedes","lexus","volvo","porsche","jaguar","land rover","maserati"].some(p => m.includes(p))) {
+    return cat < 40000 ? "midden" : "premium";
+  }
+  for (const seg of REF_SEGMENTEN) {
+    if (cat <= seg.catalogusMax) return seg.id;
+  }
+  return "compact";
+}
+
+function getLeeftijdsIndex(bouwjaar) {
+  const leeftijd = new Date().getFullYear() - Number(bouwjaar || new Date().getFullYear());
+  if (leeftijd < 3)  return 0;
+  if (leeftijd < 6)  return 1;
+  if (leeftijd < 10) return 2;
+  return 3;
+}
+
+function berekenReferentieKosten(segment, bouwjaar) {
+  const ref = REF_KOSTEN[segment] || REF_KOSTEN.compact;
+  const idx = getLeeftijdsIndex(bouwjaar);
+  return {
+    onderhoud: ref.onderhoud[idx],
+    reparatie: ref.reparatie[idx],
+    banden:    ref.banden[idx],
+    wassen:    ref.wassen[idx],
+    totaal:    ref.onderhoud[idx] + ref.reparatie[idx] + ref.banden[idx] + ref.wassen[idx],
+  };
+}
+
 const MRB_OPCENTEN = {
   "groningen": 105.7, "friesland": 77.8, "drenthe": 83.2, "overijssel": 103.3,
   "gelderland": 91.5, "utrecht": 112.8, "noord-holland": 116.8, "zuid-holland": 101.0,
@@ -1463,6 +1518,139 @@ export default function App() {
               />
             ))}
           </Card>
+
+          {/* Referentiekosten vergelijking */}
+          {(() => {
+            const segment    = bepaalSegment(state.cataloguswaarde, state.merk);
+            const segInfo    = REF_SEGMENTEN.find(s => s.id === segment);
+            const ref        = berekenReferentieKosten(segment, state.bouwjaar);
+            const leeftijdIdx= getLeeftijdsIndex(state.bouwjaar);
+            const leeftijdLabel = ["0–3 jaar", "3–6 jaar", "6–10 jaar", "10+ jaar"][leeftijdIdx];
+
+            // Werkelijke kosten per categorie (excl. brandstof en MRB — die zijn te persoonlijk)
+            const werkCats = ["onderhoud", "reparatie", "banden", "wassen"];
+            const werkelijkPerCat = {};
+            werkCats.forEach(cat => {
+              werkelijkPerCat[cat] = alleKosten
+                .filter(k => k.categorie === cat)
+                .reduce((s, k) => s + Number(k.bedrag), 0);
+            });
+            const werkelijkJaren = Math.max(verlopenJaren, 0.5);
+            const werkelijkTotaalJaar = werkCats.reduce((s, c) => s + werkelijkPerCat[c], 0) / werkelijkJaren;
+
+            const catLabels = {
+              onderhoud: { label: "Onderhoud & APK", icon: "🔧" },
+              reparatie: { label: "Reparaties",      icon: "🛠" },
+              banden:    { label: "Banden",           icon: "🔘" },
+              wassen:    { label: "Wassen",           icon: "💧" },
+            };
+
+            const maxBar = Math.max(
+              ref.totaal,
+              werkelijkTotaalJaar,
+              ...werkCats.map(c => Math.max(ref[c], werkelijkPerCat[c] / werkelijkJaren)),
+              1
+            );
+
+            return (
+              <Card>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8, marginBottom: "1rem" }}>
+                  <div>
+                    <SectionTitle style={{ margin: 0 }}>Vergelijking met referentiekosten</SectionTitle>
+                    <div style={{ fontSize: 12, color: "#999", marginTop: 3 }}>
+                      Segment: <b>{segInfo?.label}</b> · {leeftijdLabel} · Bijv. {segInfo?.voorbeeld}
+                    </div>
+                  </div>
+                  {/* Segment aanpassen */}
+                  <select value={segment} onChange={() => {}} disabled
+                    style={{ fontSize: 12, padding: "4px 8px", borderRadius: 6, color: "#999", background: "#f7f6f2", border: "0.5px solid #e0ddd8" }}>
+                    {REF_SEGMENTEN.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                  </select>
+                </div>
+
+                {/* Totaalvergelijking */}
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: "1.25rem" }}>
+                  <div style={{ flex: 1, minWidth: 140, background: "#f7f6f2", borderRadius: 8, padding: "10px 14px" }}>
+                    <div style={{ fontSize: 11, color: "#bbb", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Jouw kosten/jaar</div>
+                    <div style={{ fontSize: 20, fontWeight: 600, color: COLORS.primary }}>{fmt(werkelijkTotaalJaar)}</div>
+                    <div style={{ fontSize: 11, color: "#bbb" }}>gemiddeld over {werkelijkJaren.toFixed(1)} jaar</div>
+                  </div>
+                  <div style={{ flex: 1, minWidth: 140, background: "#f7f6f2", borderRadius: 8, padding: "10px 14px" }}>
+                    <div style={{ fontSize: 11, color: "#bbb", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Referentie/jaar</div>
+                    <div style={{ fontSize: 20, fontWeight: 600, color: "#666" }}>{fmt(ref.totaal)}</div>
+                    <div style={{ fontSize: 11, color: "#bbb" }}>segment­gemiddelde</div>
+                  </div>
+                  <div style={{ flex: 1, minWidth: 140, borderRadius: 8, padding: "10px 14px",
+                    background: werkelijkTotaalJaar > ref.totaal * 1.2 ? "#fdf3ef" : werkelijkTotaalJaar < ref.totaal * 0.8 ? "#f0faf4" : "#f7f6f2" }}>
+                    <div style={{ fontSize: 11, color: "#bbb", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Verschil/jaar</div>
+                    <div style={{ fontSize: 20, fontWeight: 600,
+                      color: werkelijkTotaalJaar > ref.totaal ? COLORS.danger : COLORS.success }}>
+                      {werkelijkTotaalJaar > ref.totaal ? "+" : ""}{fmt(Math.round(werkelijkTotaalJaar - ref.totaal))}
+                    </div>
+                    <div style={{ fontSize: 11, color: "#bbb" }}>
+                      {werkelijkTotaalJaar > ref.totaal * 1.2 ? "Boven gemiddelde" :
+                       werkelijkTotaalJaar < ref.totaal * 0.8 ? "Onder gemiddelde" : "Rond het gemiddelde"}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Per categorie */}
+                <div style={{ fontSize: 12, fontWeight: 600, color: "#bbb", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10 }}>
+                  Per categorie (excl. brandstof en MRB)
+                </div>
+                {werkCats.map(cat => {
+                  const werkJaar  = (werkelijkPerCat[cat] || 0) / werkelijkJaren;
+                  const refJaar   = ref[cat];
+                  const diff      = werkJaar - refJaar;
+                  const pct       = refJaar > 0 ? Math.round((werkJaar / refJaar) * 100) : null;
+                  const heeftData = werkelijkPerCat[cat] > 0;
+                  return (
+                    <div key={cat} style={{ marginBottom: 14 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+                        <span style={{ fontSize: 13 }}>{catLabels[cat].icon} {catLabels[cat].label}</span>
+                        <div style={{ display: "flex", gap: 12, alignItems: "baseline" }}>
+                          {heeftData ? (
+                            <span style={{ fontSize: 13, fontWeight: 600,
+                              color: diff > refJaar * 0.25 ? COLORS.danger : diff < -refJaar * 0.25 ? COLORS.success : "#1a1a1a" }}>
+                              {fmt(werkJaar)}/jr
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: 12, color: "#ccc" }}>geen data</span>
+                          )}
+                          <span style={{ fontSize: 12, color: "#bbb" }}>ref: {fmt(refJaar)}/jr</span>
+                          {heeftData && pct !== null && (
+                            <span style={{ fontSize: 11, padding: "2px 6px", borderRadius: 10,
+                              background: pct > 125 ? "#fdf3ef" : pct < 75 ? "#f0faf4" : "#f7f6f2",
+                              color: pct > 125 ? COLORS.danger : pct < 75 ? COLORS.success : "#999" }}>
+                              {pct}%
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      {/* Dubbele balk: jouw kosten vs referentie */}
+                      <div style={{ position: "relative", height: 8, background: "#f0ede8", borderRadius: 4 }}>
+                        {/* Referentie balk (lichtgrijs) */}
+                        <div style={{ position: "absolute", top: 0, left: 0, height: 8, borderRadius: 4,
+                          width: `${(refJaar / maxBar) * 100}%`, background: "#d4d0c8" }} />
+                        {/* Werkelijk balk (gekleurd, over referentie) */}
+                        {heeftData && (
+                          <div style={{ position: "absolute", top: 0, left: 0, height: 8, borderRadius: 4,
+                            width: `${Math.min((werkJaar / maxBar) * 100, 100)}%`,
+                            background: diff > refJaar * 0.25 ? COLORS.danger : diff < -refJaar * 0.25 ? COLORS.success : COLORS.primary,
+                            opacity: 0.85 }} />
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                <div style={{ fontSize: 12, color: "#bbb", marginTop: 8, lineHeight: 1.6 }}>
+                  ⓘ Referenties zijn segmentgemiddelden op basis van ANWB-richtlijnen (2024). Brandstof, MRB en verzekering zijn niet meegenomen — die hangen sterk af van gebruik en persoonlijke keuzes.
+                  Segment wordt automatisch bepaald op basis van cataloguswaarde ({fmt(state.cataloguswaarde)}) en merk.
+                </div>
+              </Card>
+            );
+          })()}
         </div>
       )}
 
