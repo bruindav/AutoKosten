@@ -1,6 +1,5 @@
-// AutoKosten v2 fix5
-// Nieuw: kostenlijst ingeklapt per jaar, MRB overschrijfbaar bedrag,
-//        verzekering als jaarbedrag -> 12 maandposten automatisch
+// AutoKosten v2 fix16
+// Multi-auto: meerdere auto-profielen, switchen via header
 
 import { useState, useEffect } from "react";
 import {
@@ -8,8 +7,8 @@ import {
   Tooltip, Legend, ResponsiveContainer, ReferenceLine
 } from "recharts";
 
-const APP_VERSION = "v2 fix5";
-const STORAGE_KEY = "autokosten_v2";
+const APP_VERSION = "v2 fix16";
+const STORAGE_KEY = "autokosten_v3_multi";
 
 const COLORS = {
   primary: "#1B4F72", accent: "#E67E22", success: "#27AE60",
@@ -355,16 +354,90 @@ function JaarGroep({ jaar, posten, openJaren, setOpenJaren, editId, setEditId, o
   );
 }
 
+// ─── Multi-auto storage helpers ──────────────────────────────────────────────
+
+function loadStorage() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      // Nieuwe structuur: { autos: [{id, label, ...state}], actiefId }
+      if (parsed.autos && parsed.actiefId) return parsed;
+    }
+    // Migreer oude v2 data naar nieuwe structuur
+    const oudV2 = localStorage.getItem("autokosten_v2");
+    if (oudV2) {
+      const oudeState = JSON.parse(oudV2);
+      const eersteAuto = { id: "auto_1", label: oudeState.merk && oudeState.model ? `${oudeState.merk} ${oudeState.model}` : "Mijn auto", ...defaultState(), ...oudeState };
+      return { autos: [eersteAuto], actiefId: "auto_1" };
+    }
+  } catch {}
+  const eersteAuto = { id: "auto_1", label: "Mijn auto", ...defaultState() };
+  return { autos: [eersteAuto], actiefId: "auto_1" };
+}
+
+function saveStorage(data) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch {}
+}
+
+function nieuweAutoId() {
+  return `auto_${Date.now()}`;
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function App() {
+  // Multi-auto: alle auto's + actieve auto
+  const [storage, setStorage] = useState(() => loadStorage());
+  const actiefId  = storage.actiefId;
+  const alleAutos = storage.autos;
+  const state     = alleAutos.find(a => a.id === actiefId) || alleAutos[0];
+
+  // Sla op bij wijziging
+  useEffect(() => { saveStorage(storage); }, [storage]);
+
+  // Helper: update een veld van de actieve auto
+  const set = (key, val) => setStorage(s => ({
+    ...s,
+    autos: s.autos.map(a => a.id === actiefId ? { ...a, [key]: val } : a),
+  }));
+
+  // Helper: update de hele state van de actieve auto
+  const setState = (updater) => setStorage(s => ({
+    ...s,
+    autos: s.autos.map(a => a.id === actiefId
+      ? (typeof updater === "function" ? updater(a) : { ...a, ...updater })
+      : a),
+  }));
+
+  // Auto toevoegen
+  const voegAutoToe = (label) => {
+    const id = nieuweAutoId();
+    setStorage(s => ({
+      autos: [...s.autos, { id, label: label || "Nieuwe auto", ...defaultState() }],
+      actiefId: id,
+    }));
+  };
+
+  // Auto verwijderen
+  const verwijderAuto = (id) => {
+    setStorage(s => {
+      const rest = s.autos.filter(a => a.id !== id);
+      if (rest.length === 0) {
+        const nieuw = { id: nieuweAutoId(), label: "Mijn auto", ...defaultState() };
+        return { autos: [nieuw], actiefId: nieuw.id };
+      }
+      return { autos: rest, actiefId: s.actiefId === id ? rest[0].id : s.actiefId };
+    });
+  };
+
+  // Auto label wijzigen
+  const setAutoLabel = (id, label) => setStorage(s => ({
+    ...s,
+    autos: s.autos.map(a => a.id === id ? { ...a, label } : a),
+  }));
+
   const [tab, setTab] = useState("auto");
-  const [state, setState] = useState(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      return saved ? { ...defaultState(), ...JSON.parse(saved) } : defaultState();
-    } catch { return defaultState(); }
-  });
   const [rdwLoading, setRdwLoading] = useState(false);
   const [rdwError, setRdwError]     = useState("");
   const [rdwRaw, setRdwRaw]         = useState(null);
@@ -380,20 +453,19 @@ export default function App() {
   const [importText, setImportText] = useState("");
   const [importError, setImportError] = useState("");
   const [saveFlash, setSaveFlash]   = useState(false);
-  // Nieuwe verzekeringrij invoer
+  const [showAutoMenu, setShowAutoMenu] = useState(false);
+  const [editLabelId, setEditLabelId] = useState(null);
+  const [editLabelVal, setEditLabelVal] = useState("");
+  const [nieuwAutoLabel, setNieuwAutoLabel] = useState("");
   const [nieuwVerzJaar, setNieuwVerzJaar] = useState(String(new Date().getFullYear()));
   const [nieuwVerzBedrag, setNieuwVerzBedrag] = useState("");
 
+  // Flash bij opslaan
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      setSaveFlash(true);
-      const t = setTimeout(() => setSaveFlash(false), 1400);
-      return () => clearTimeout(t);
-    } catch {}
-  }, [state]);
-
-  const set = (key, val) => setState(s => ({ ...s, [key]: val }));
+    setSaveFlash(true);
+    const t = setTimeout(() => setSaveFlash(false), 1200);
+    return () => clearTimeout(t);
+  }, [storage]);
 
   // RDW
   const handleLookup = async () => {
@@ -565,7 +637,78 @@ export default function App() {
   return (
     <div style={{ fontFamily: "system-ui, -apple-system, sans-serif", color: "#1a1a1a", maxWidth: 940, margin: "0 auto", padding: "1.5rem 1rem 4rem" }}>
 
-      {/* Header */}
+      {/* ══ AUTO-SWITCHER ══ */}
+      <div style={{ marginBottom: "1rem" }}>
+        {/* Balk met auto-knoppen */}
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
+          {alleAutos.map(a => (
+            <button key={a.id} onClick={() => {
+              setStorage(s => ({ ...s, actiefId: a.id }));
+              setRdwRaw(null); setRdwError("");
+            }} style={{
+              padding: "6px 14px", fontSize: 13, borderRadius: 20, cursor: "pointer",
+              border: a.id === actiefId ? `1.5px solid ${COLORS.primary}` : "0.5px solid #e0ddd8",
+              background: a.id === actiefId ? COLORS.primary : "#fff",
+              color: a.id === actiefId ? "#fff" : "#666",
+              fontWeight: a.id === actiefId ? 600 : 400,
+            }}>
+              {a.label || "Auto"}
+            </button>
+          ))}
+          <button onClick={() => setShowAutoMenu(v => !v)} style={{
+            padding: "6px 12px", fontSize: 13, borderRadius: 20, cursor: "pointer",
+            border: "0.5px solid #e0ddd8", background: "none", color: "#999",
+          }}>⚙ Beheer</button>
+        </div>
+
+        {/* Beheer-paneel */}
+        {showAutoMenu && (
+          <div style={{ background: "#f7f6f2", borderRadius: 10, padding: "12px 14px", marginBottom: 8 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "#bbb", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10 }}>Auto's beheren</div>
+            {alleAutos.map(a => (
+              <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                {editLabelId === a.id ? (
+                  <>
+                    <input value={editLabelVal} onChange={e => setEditLabelVal(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter") { setAutoLabel(a.id, editLabelVal); setEditLabelId(null); }}}
+                      style={{ flex: 1, fontSize: 13 }} autoFocus />
+                    <button onClick={() => { setAutoLabel(a.id, editLabelVal); setEditLabelId(null); }}
+                      style={{ background: COLORS.success, color: "#fff", border: "none", borderRadius: 4, padding: "4px 10px", cursor: "pointer", fontSize: 12 }}>✓</button>
+                    <button onClick={() => setEditLabelId(null)}
+                      style={{ background: "none", border: "0.5px solid #ccc", borderRadius: 4, padding: "4px 8px", cursor: "pointer", fontSize: 12 }}>✕</button>
+                  </>
+                ) : (
+                  <>
+                    <span style={{ flex: 1, fontSize: 13, fontWeight: a.id === actiefId ? 500 : 400 }}>
+                      {a.id === actiefId ? "▶ " : ""}{a.label || "Auto"}
+                      {a.merk && a.model ? <span style={{ color: "#bbb", marginLeft: 6, fontWeight: 400 }}>{a.merk} {a.model}</span> : null}
+                    </span>
+                    <button onClick={() => { setEditLabelId(a.id); setEditLabelVal(a.label || ""); }}
+                      style={{ background: "none", border: "0.5px solid #e0ddd8", borderRadius: 4, padding: "3px 8px", cursor: "pointer", fontSize: 12, color: "#666" }}>✏ Naam</button>
+                    {alleAutos.length > 1 && (
+                      <button onClick={() => { if (window.confirm(`"${a.label}" verwijderen?`)) verwijderAuto(a.id); }}
+                        style={{ background: "none", border: `0.5px solid ${COLORS.danger}`, color: COLORS.danger, borderRadius: 4, padding: "3px 8px", cursor: "pointer", fontSize: 12 }}>✕</button>
+                    )}
+                  </>
+                )}
+              </div>
+            ))}
+            {/* Nieuwe auto toevoegen */}
+            <div style={{ display: "flex", gap: 8, marginTop: 10, borderTop: "0.5px solid #e0ddd8", paddingTop: 10 }}>
+              <input value={nieuwAutoLabel} onChange={e => setNieuwAutoLabel(e.target.value)}
+                placeholder="Naam nieuwe auto (bijv. Auto partner)"
+                onKeyDown={e => { if (e.key === "Enter" && nieuwAutoLabel.trim()) { voegAutoToe(nieuwAutoLabel.trim()); setNieuwAutoLabel(""); setShowAutoMenu(false); }}}
+                style={{ flex: 1, fontSize: 13 }} />
+              <button onClick={() => { if (nieuwAutoLabel.trim()) { voegAutoToe(nieuwAutoLabel.trim()); setNieuwAutoLabel(""); setShowAutoMenu(false); }}}
+                style={{ background: COLORS.primary, color: "#fff", border: "none", borderRadius: 6, padding: "7px 14px", cursor: "pointer", fontWeight: 500, fontSize: 13 }}>
+                + Toevoegen
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Header: actieve auto */}
       <div className="app-header" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "1.5rem", flexWrap: "wrap", gap: 12 }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.1em", color: "#bbb", textTransform: "uppercase", marginBottom: 4 }}>
@@ -573,9 +716,9 @@ export default function App() {
             {saveFlash && <span style={{ marginLeft: 12, color: COLORS.success, fontWeight: 400 }}>✓ opgeslagen</span>}
           </div>
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 600, wordBreak: "break-word" }}>
-            {state.merk && state.model ? `${state.merk} ${state.model}` : "Mijn auto"}
+            {state.merk && state.model ? `${state.merk} ${state.model}` : state.label || "Mijn auto"}
           </h1>
-          {state.bouwjaar && <div style={{ fontSize: 13, color: "#999", marginTop: 2, flexWrap: "wrap" }}>{state.bouwjaar} · {state.brandstof} · {state.kenteken}{state.gewichtKg ? ` · ${fmtN(state.gewichtKg)} kg` : ""}{(state.huidigeKmStand || latestKmStand) ? ` · ${fmtN(state.huidigeKmStand || latestKmStand)} km` : ""}</div>}
+          {state.bouwjaar && <div style={{ fontSize: 13, color: "#999", marginTop: 2 }}>{state.bouwjaar} · {state.brandstof} · {state.kenteken}{state.gewichtKg ? ` · ${fmtN(state.gewichtKg)} kg` : ""}{(state.huidigeKmStand || latestKmStand) ? ` · ${fmtN(state.huidigeKmStand || latestKmStand)} km` : ""}</div>}
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", width: "100%" }}>
           <MetricCard label="Totaalkosten"  value={fmt(totaalKosten + totaleAfschr)} sub="incl. afschrijving" />
@@ -1655,10 +1798,21 @@ export default function App() {
           <Card>
             <SectionTitle>Data beheer</SectionTitle>
             <div style={{ fontSize: 13, color: "#999", marginBottom: 12 }}>Alle gegevens worden automatisch opgeslagen in je browser (localStorage).</div>
-            <button onClick={() => { if (window.confirm("Weet je zeker dat je alle data wilt wissen?")) { localStorage.removeItem(STORAGE_KEY); setState(defaultState()); }}}
-              style={{ background: "none", border: `0.5px solid ${COLORS.danger}`, color: COLORS.danger, borderRadius: 6, padding: "8px 16px", cursor: "pointer", fontSize: 13 }}>
-              Alle data wissen
-            </button>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button onClick={() => { if (window.confirm(`Alle kosten en gegevens van "${state.label || state.merk || "deze auto"}" wissen?`)) {
+                setState(defaultState());
+              }}}
+                style={{ background: "none", border: `0.5px solid ${COLORS.danger}`, color: COLORS.danger, borderRadius: 6, padding: "8px 16px", cursor: "pointer", fontSize: 13 }}>
+                Gegevens wissen (huidige auto)
+              </button>
+              <button onClick={() => { if (window.confirm("ALLE auto's en data verwijderen?")) {
+                const nieuw = { id: nieuweAutoId(), label: "Mijn auto", ...defaultState() };
+                setStorage({ autos: [nieuw], actiefId: nieuw.id });
+              }}}
+                style={{ background: "none", border: "0.5px solid #ccc", color: "#999", borderRadius: 6, padding: "8px 16px", cursor: "pointer", fontSize: 13 }}>
+                Alles wissen
+              </button>
+            </div>
           </Card>
         </div>
       )}
