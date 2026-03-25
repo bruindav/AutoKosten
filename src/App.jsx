@@ -266,47 +266,73 @@ function CatGroep({ catId, posten, editId, setEditId, onSave, onVerwijder }) {
   const auto   = posten.filter(k => k.automatisch).length;
   return (
     <div>
-      {/* Categorie-header */}
-      <div
-        onClick={() => setOpen(o => !o)}
-        style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 12px 7px 28px", background: "#fafaf8", borderBottom: "0.5px solid #f0ede8", cursor: "pointer", userSelect: "none" }}
-      >
+      <div onClick={() => setOpen(o => !o)}
+        style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 12px 7px 28px", background: "#fafaf8", borderBottom: "0.5px solid #f0ede8", cursor: "pointer", userSelect: "none" }}>
         <span style={{ fontSize: 11, color: open ? COLORS.accent : "#bbb", transform: `rotate(${open ? 90 : 0}deg)`, display: "inline-block", transition: "transform 0.15s", width: 10 }}>▶</span>
         <span style={{ fontSize: 13 }}>{cat?.icon} {cat?.label || catId}</span>
         <span style={{ fontSize: 11, color: "#bbb" }}>{posten.length} posten{auto > 0 ? ` (${auto} auto)` : ""}</span>
         <span style={{ marginLeft: "auto", fontWeight: 500, fontSize: 13 }}>{fmt(totaal)}</span>
       </div>
-      {/* Posten binnen categorie */}
       {open && posten.map(k => {
         if (editId === k.id) {
           return (
-            <table key={k.id} style={{ width: "100%", borderCollapse: "collapse" }}>
-              <tbody><EditRij kost={k} onSave={onSave} onCancel={() => setEditId(null)} /></tbody>
-            </table>
+            <div key={k.id} style={{ padding: "8px 12px 8px 28px", borderBottom: "0.5px solid #f5f4f0", background: "#fffbf5" }}>
+              <EditRijInline kost={k} onSave={onSave} onCancel={() => setEditId(null)} />
+            </div>
           );
         }
         return (
-          <div key={k.id} style={{ display: "flex", alignItems: "center", gap: 0, padding: "6px 12px 6px 52px", borderBottom: "0.5px solid #f5f4f0", background: k.automatisch ? "#f9fdf9" : "#fff", fontSize: 13 }}>
-            <span style={{ color: "#aaa", width: 100, flexShrink: 0 }}>{k.datum}</span>
-            <span style={{ fontWeight: 500, width: 80, flexShrink: 0 }}>{fmt(k.bedrag)}</span>
-            <span style={{ color: "#bbb", width: 80, flexShrink: 0 }}>{k.km ? fmtN(k.km) : "—"}</span>
-            <span style={{ color: "#999", flex: 1 }}>
-              {k.omschrijving || "—"}
-              {k.automatisch && <span style={{ marginLeft: 6, fontSize: 11, color: COLORS.success, background: "#e8f8ef", borderRadius: 3, padding: "1px 5px" }}>auto</span>}
-            </span>
-            <span style={{ flexShrink: 0, width: 52, textAlign: "right" }}>
-              {!k.automatisch && (
-                <>
-                  <button onClick={() => setEditId(k.id)} title="Bewerken"
-                    style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.primary, fontSize: 13, marginRight: 2 }}>✏</button>
-                  <button onClick={() => onVerwijder(k.id)} title="Verwijderen"
-                    style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.danger, fontSize: 13 }}>✕</button>
-                </>
-              )}
-            </span>
+          <div key={k.id} style={{ padding: "6px 12px 6px 28px", borderBottom: "0.5px solid #f5f4f0", background: k.automatisch ? "#f9fdf9" : "#fff" }}>
+            {/* Regel 1: datum + bedrag + acties */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 12, color: "#aaa", flexShrink: 0 }}>{k.datum}</span>
+              <span style={{ fontWeight: 600, fontSize: 13, flexShrink: 0 }}>{fmt(k.bedrag)}</span>
+              {k.km && <span style={{ fontSize: 12, color: "#bbb", flexShrink: 0 }}>{fmtN(k.km)} km</span>}
+              {k.automatisch && <span style={{ fontSize: 11, color: COLORS.success, background: "#e8f8ef", borderRadius: 3, padding: "1px 5px" }}>auto</span>}
+              <span style={{ marginLeft: "auto", flexShrink: 0 }}>
+                {!k.automatisch && (
+                  <>
+                    <button onClick={() => setEditId(k.id)} title="Bewerken"
+                      style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.primary, fontSize: 15, padding: "2px 4px" }}>✏</button>
+                    <button onClick={() => onVerwijder(k.id)} title="Verwijderen"
+                      style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.danger, fontSize: 15, padding: "2px 4px" }}>✕</button>
+                  </>
+                )}
+              </span>
+            </div>
+            {/* Regel 2: omschrijving (alleen als aanwezig) */}
+            {k.omschrijving && (
+              <div style={{ fontSize: 12, color: "#999", marginTop: 1, paddingLeft: 0 }}>{k.omschrijving}</div>
+            )}
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// Inline edit als gestapeld formulier (mobiel-vriendelijk)
+function EditRijInline({ kost, onSave, onCancel }) {
+  const [e, setE] = useState({ ...kost, bedrag: String(kost.bedrag), km: kost.km ? String(kost.km) : "" });
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <input type="date" value={e.datum} onChange={x => setE(p => ({ ...p, datum: x.target.value }))} style={{ flex: "1 1 130px" }} />
+        <input type="number" placeholder="Bedrag" value={e.bedrag} onChange={x => setE(p => ({ ...p, bedrag: x.target.value }))} style={{ flex: "1 1 80px" }} />
+        <input type="number" placeholder="Km" value={e.km} onChange={x => setE(p => ({ ...p, km: x.target.value }))} style={{ flex: "1 1 80px" }} />
+      </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <select value={e.categorie} onChange={x => setE(p => ({ ...p, categorie: x.target.value }))} style={{ flex: "1 1 150px" }}>
+          {COST_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.icon} {c.label}</option>)}
+        </select>
+        <input placeholder="Omschrijving" value={e.omschrijving} onChange={x => setE(p => ({ ...p, omschrijving: x.target.value }))} style={{ flex: "2 1 150px" }} />
+      </div>
+      <div style={{ display: "flex", gap: 6 }}>
+        <button onClick={() => onSave({ ...e, bedrag: Number(e.bedrag), km: e.km ? Number(e.km) : null })}
+          style={{ background: COLORS.success, color: "#fff", border: "none", borderRadius: 5, padding: "7px 14px", cursor: "pointer", fontSize: 13, fontWeight: 500 }}>✓ Opslaan</button>
+        <button onClick={onCancel}
+          style={{ background: "none", border: "0.5px solid #ccc", borderRadius: 5, padding: "7px 12px", cursor: "pointer", fontSize: 13 }}>Annuleren</button>
+      </div>
     </div>
   );
 }
@@ -754,31 +780,48 @@ export default function App() {
               key: "voertuig", titel: "Voertuig & financieel",
               inhoud: (
                 <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
-                  <div style={{ flex: 1, minWidth: 220 }}>
+                  <div style={{ flex: "1 1 220px" }}>
                     <div style={{ fontSize: 12, color: "#bbb", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Voertuig</div>
                     {[["Merk","merk"],["Model","model"],["Bouwjaar","bouwjaar"],["Brandstof","brandstof"]].map(([lbl,key]) => (
-                      <Row key={key} label={lbl}><input value={state[key]} onChange={e => set(key, e.target.value)} style={{ flex: 1 }} /></Row>
+                      <div key={key} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                        <label style={{ fontSize: 13, color: "#666", width: 90, flexShrink: 0 }}>{lbl}</label>
+                        <input value={state[key]} onChange={e => set(key, e.target.value)} style={{ flex: 1, minWidth: 0 }} />
+                      </div>
                     ))}
-                    <Row label="Gewicht (kg)"><input type="number" value={state.gewichtKg} onChange={e => set("gewichtKg", e.target.value)} style={{ flex: 1 }} /></Row>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                      <label style={{ fontSize: 13, color: "#666", width: 90, flexShrink: 0 }}>Gewicht (kg)</label>
+                      <input type="number" value={state.gewichtKg} onChange={e => set("gewichtKg", e.target.value)} style={{ flex: 1, minWidth: 0 }} />
+                    </div>
                   </div>
-                  <div style={{ flex: 1, minWidth: 220 }}>
+                  <div style={{ flex: "1 1 220px" }}>
                     <div style={{ fontSize: 12, color: "#bbb", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Financieel</div>
-                    <Row label="Aankoopprijs"><input type="number" value={state.aankoopprijs} onChange={e => set("aankoopprijs", Number(e.target.value))} style={{ flex: 1 }} /></Row>
-                    <Row label="Aankoopdatum"><input type="date" value={state.aankoopdatum} onChange={e => set("aankoopdatum", e.target.value)} style={{ flex: 1 }} /></Row>
-                    <Row label="Verwacht weg"><input type="date" value={state.verwachteVerkoopdatum} onChange={e => set("verwachteVerkoopdatum", e.target.value)} style={{ flex: 1 }} /></Row>
-                    <Row label="Verkoopprijs"><input type="number" value={state.verwachtVerkoopprijs} onChange={e => set("verwachtVerkoopprijs", Number(e.target.value))} style={{ flex: 1 }} /></Row>
-                    <Row label="Km per jaar"><input type="number" value={state.jaarlijkseKm} onChange={e => set("jaarlijkseKm", Number(e.target.value))} style={{ flex: 1 }} /></Row>
-                    <Row label="Huidige km-stand">
+                    {[
+                      ["Aankoopprijs", "aankoopprijs", "number"],
+                      ["Aankoopdatum", "aankoopdatum", "date"],
+                      ["Verwacht weg",  "verwachteVerkoopdatum", "date"],
+                      ["Verkoopprijs",  "verwachtVerkoopprijs", "number"],
+                      ["Km per jaar",   "jaarlijkseKm", "number"],
+                    ].map(([lbl, key, type]) => (
+                      <div key={key} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                        <label style={{ fontSize: 13, color: "#666", width: 90, flexShrink: 0 }}>{lbl}</label>
+                        <input type={type}
+                          value={type === "number" ? (state[key] ?? "") : (state[key] || "")}
+                          onChange={e => set(key, type === "number" ? Number(e.target.value) : e.target.value)}
+                          style={{ flex: 1, minWidth: 0 }} />
+                      </div>
+                    ))}
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <label style={{ fontSize: 13, color: "#666", width: 90, flexShrink: 0 }}>Km-stand</label>
                       <input type="number" value={state.huidigeKmStand ?? latestKmStand ?? ""}
                         onChange={e => set("huidigeKmStand", e.target.value ? Number(e.target.value) : null)}
-                        placeholder={latestKmStand ? fmtN(latestKmStand) : "optioneel"} style={{ flex: 1 }} />
+                        placeholder={latestKmStand ? fmtN(latestKmStand) : "optioneel"} style={{ flex: 1, minWidth: 0 }} />
                       {latestKmStand > 0 && (
                         <button onClick={() => set("huidigeKmStand", latestKmStand)}
-                          style={{ fontSize: 11, background: "none", border: "0.5px solid #e0ddd8", borderRadius: 4, padding: "4px 8px", cursor: "pointer", color: "#999", whiteSpace: "nowrap" }}>
+                          style={{ fontSize: 11, background: "none", border: "0.5px solid #e0ddd8", borderRadius: 4, padding: "4px 6px", cursor: "pointer", color: "#999", whiteSpace: "nowrap", flexShrink: 0 }}>
                           ← {fmtN(latestKmStand)}
                         </button>
                       )}
-                    </Row>
+                    </div>
                   </div>
                 </div>
               ),
@@ -880,51 +923,45 @@ export default function App() {
                       label="Premie automatisch splitsen in maandposten"
                       sub="Vul per jaar premie in — de app maakt 12 maandposten aan" />
 
-                    <div style={{ marginTop: 12, overflowX: "auto" }}>
-                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                        <thead>
-                          <tr style={{ borderBottom: "0.5px solid #e8e6e0" }}>
-                            <th style={{ textAlign: "left", padding: "6px 8px", fontWeight: 500, color: "#bbb", width: 50 }}>Jaar</th>
-                            <th style={{ textAlign: "left", padding: "6px 8px", fontWeight: 500, color: "#bbb" }}>Type dekking</th>
-                            <th style={{ textAlign: "left", padding: "6px 8px", fontWeight: 500, color: "#bbb", width: 110 }}>Jaarpremie (€)</th>
-                            <th style={{ textAlign: "left", padding: "6px 8px", fontWeight: 500, color: "#bbb" }}>Pechhulp</th>
-                            <th style={{ textAlign: "left", padding: "6px 8px", fontWeight: 500, color: "#bbb", width: 90 }}>Pechhulp (€/jr)</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {jarenLijst.map(jaar => {
-                            const vj = verzJarenMap[jaar] || {};
-                            const pj = pechhulpJarenMap[jaar] || {};
-                            return (
-                              <tr key={jaar} style={{ borderBottom: "0.5px solid #f5f4f0" }}>
-                                <td style={{ padding: "6px 8px", fontWeight: 600 }}>{jaar}</td>
-                                <td style={{ padding: "6px 4px" }}>
-                                  <select value={vj.type || ""} onChange={e => updateVerzJaar(jaar, "type", e.target.value)}
-                                    style={{ width: "100%", fontSize: 13 }}>
-                                    {VERZ_TYPEN.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                                  </select>
-                                </td>
-                                <td style={{ padding: "6px 4px" }}>
-                                  <input type="number" placeholder="0" value={vj.bedrag || ""}
-                                    onChange={e => updateVerzJaar(jaar, "bedrag", e.target.value ? Number(e.target.value) : 0)}
-                                    style={{ width: "100%" }} />
-                                </td>
-                                <td style={{ padding: "6px 4px" }}>
-                                  <select value={pj.type || ""} onChange={e => updatePechJaar(jaar, "type", e.target.value)}
-                                    style={{ width: "100%", fontSize: 13 }}>
-                                    {PECH_TYPEN.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                                  </select>
-                                </td>
-                                <td style={{ padding: "6px 4px" }}>
-                                  <input type="number" placeholder="0" value={pj.bedrag || ""}
-                                    onChange={e => updatePechJaar(jaar, "bedrag", e.target.value ? Number(e.target.value) : 0)}
-                                    style={{ width: "100%" }} />
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
+                    <div style={{ marginTop: 12 }}>
+                      {jarenLijst.map(jaar => {
+                        const vj = verzJarenMap[jaar] || {};
+                        const pj = pechhulpJarenMap[jaar] || {};
+                        const maandBedrag = vj.bedrag ? Math.round(vj.bedrag / 12) : 0;
+                        return (
+                          <div key={jaar} style={{ borderBottom: "0.5px solid #f0ede8", paddingBottom: 10, marginBottom: 10 }}>
+                            {/* Jaarlabel */}
+                            <div style={{ fontSize: 12, fontWeight: 600, color: COLORS.primary, marginBottom: 6 }}>{jaar}</div>
+                            {/* Rij 1: verzekering */}
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 4, alignItems: "center" }}>
+                              <select value={vj.type || ""} onChange={e => updateVerzJaar(jaar, "type", e.target.value)}
+                                style={{ flex: "2 1 130px", fontSize: 13 }}>
+                                {VERZ_TYPEN.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                              </select>
+                              <input type="number" placeholder="Premie/jaar (€)" value={vj.bedrag || ""}
+                                onChange={e => updateVerzJaar(jaar, "bedrag", e.target.value ? Number(e.target.value) : 0)}
+                                style={{ flex: "1 1 110px" }} />
+                              {maandBedrag > 0 && (
+                                <span style={{ fontSize: 12, color: COLORS.success, flexShrink: 0 }}>{fmt(maandBedrag)}/mnd</span>
+                              )}
+                            </div>
+                            {/* Rij 2: pechhulp */}
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                              <select value={pj.type || ""} onChange={e => updatePechJaar(jaar, "type", e.target.value)}
+                                style={{ flex: "2 1 130px", fontSize: 13 }}>
+                                {PECH_TYPEN.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                              </select>
+                              <input type="number" placeholder="Pechhulp/jaar (€)" value={pj.bedrag || ""}
+                                onChange={e => updatePechJaar(jaar, "bedrag", e.target.value ? Number(e.target.value) : 0)}
+                                style={{ flex: "1 1 110px" }}
+                                disabled={!pj.type} />
+                              {pj.bedrag > 0 && (
+                                <span style={{ fontSize: 12, color: "#999", flexShrink: 0 }}>{fmt(Math.round(pj.bedrag / 12))}/mnd</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                     {verzPosten.length > 0 && (
                       <div style={{ marginTop: 8, fontSize: 12, color: COLORS.success }}>
