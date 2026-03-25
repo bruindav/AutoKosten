@@ -633,7 +633,20 @@ export default function App() {
     cumLease += leasePrive * 12;
     grafiekData.push({ jaar: String(j), "Eigen auto": Math.round(cumEigen), "Privé lease": Math.round(cumLease) });
   }
-  const jaarBarData = Object.entries(kostenPerJaar).sort().map(([jaar, kosten]) => ({ jaar, kosten }));
+  // jaarBarData: per jaar vast + variabel gesplitst
+  const jaarBarData = (() => {
+    const jaren = Object.keys(kostenPerJaar).sort();
+    return jaren.map(jaar => {
+      const posten = alleKosten.filter(k => k.datum?.slice(0,4) === jaar);
+      const variabel = posten.filter(k => COST_CATEGORIES.find(c => c.id === k.categorie)?.variabel)
+        .reduce((s, k) => s + Number(k.bedrag), 0);
+      const vast = posten.reduce((s, k) => s + Number(k.bedrag), 0) - variabel;
+      return { jaar, vast: Math.round(vast), variabel: Math.round(variabel), totaal: Math.round(vast + variabel) };
+    });
+  })();
+  const jaarBarGemiddelde = jaarBarData.length > 0
+    ? Math.round(jaarBarData.reduce((s, d) => s + d.totaal, 0) / jaarBarData.length)
+    : 0;
   const afschrData  = afschrijvingsCurve(state.aankoopprijs, state.verwachtVerkoopprijs, bezitsjaren);
   const kostPerCat  = COST_CATEGORIES
     .map(c => ({ ...c, totaal: alleKosten.filter(k => k.categorie === c.id).reduce((s, k) => s + Number(k.bedrag), 0) }))
@@ -1433,16 +1446,50 @@ export default function App() {
           </Card>
           <Card>
             <SectionTitle>Gemaakte kosten per jaar</SectionTitle>
-            {jaarBarData.length === 0 ? <div style={{ color: "#bbb", fontSize: 14 }}>Nog geen kosten.</div>
-              : <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={jaarBarData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0ede8" vertical={false} />
-                    <XAxis dataKey="jaar" tick={{ fontSize: 12 }} />
-                    <YAxis tickFormatter={v => `€${Math.round(v/1000)}k`} tick={{ fontSize: 12 }} width={48} />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Bar dataKey="kosten" fill={COLORS.primary} radius={[4,4,0,0]} name="Kosten" />
-                  </BarChart>
-                </ResponsiveContainer>
+            {jaarBarData.length === 0
+              ? <div style={{ color: "#bbb", fontSize: 14 }}>Nog geen kosten.</div>
+              : <>
+                  <ResponsiveContainer width="100%" height={240}>
+                    <BarChart data={jaarBarData} margin={{ top: 16, right: 16, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0ede8" vertical={false} />
+                      <XAxis dataKey="jaar" tick={{ fontSize: 12 }} />
+                      <YAxis tickFormatter={v => `€${Math.round(v/1000)}k`} tick={{ fontSize: 12 }} width={48} />
+                      <Tooltip
+                        content={({ active, payload, label }) => {
+                          if (!active || !payload?.length) return null;
+                          const vast     = payload.find(p => p.dataKey === "vast")?.value || 0;
+                          const variabel = payload.find(p => p.dataKey === "variabel")?.value || 0;
+                          return (
+                            <div style={{ background: "#fff", border: "0.5px solid #e0ddd8", borderRadius: 8, padding: "10px 14px", fontSize: 13 }}>
+                              <div style={{ fontWeight: 600, marginBottom: 6 }}>{label}</div>
+                              <div style={{ color: COLORS.primary }}>Vast: {fmt(vast)}</div>
+                              <div style={{ color: COLORS.accent }}>Variabel: {fmt(variabel)}</div>
+                              <div style={{ borderTop: "0.5px solid #f0ede8", marginTop: 6, paddingTop: 6, fontWeight: 500 }}>Totaal: {fmt(vast + variabel)}</div>
+                            </div>
+                          );
+                        }}
+                      />
+                      <Legend wrapperStyle={{ fontSize: 12 }} />
+                      <Bar dataKey="vast"     stackId="a" fill={COLORS.primary} name="Vast"     radius={[0,0,0,0]} />
+                      <Bar dataKey="variabel" stackId="a" fill={COLORS.accent}  name="Variabel" radius={[4,4,0,0]} />
+                      {jaarBarData.length > 1 && (
+                        <ReferenceLine y={jaarBarGemiddelde} stroke="#999" strokeDasharray="5 3"
+                          label={{ value: `Gem. ${fmt(jaarBarGemiddelde)}`, fontSize: 11, fill: "#999", position: "insideTopRight" }} />
+                      )}
+                    </BarChart>
+                  </ResponsiveContainer>
+                  <div style={{ display: "flex", gap: 16, fontSize: 12, color: "#999", marginTop: 8, flexWrap: "wrap" }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                      <span style={{ width: 10, height: 10, background: COLORS.primary, borderRadius: 2, display: "inline-block" }} />Vast (onderhoud, verzekering, MRB…)
+                    </span>
+                    <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                      <span style={{ width: 10, height: 10, background: COLORS.accent, borderRadius: 2, display: "inline-block" }} />Variabel (brandstof, parkeren…)
+                    </span>
+                    <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                      <span style={{ width: 18, height: 2, background: "#999", display: "inline-block", borderRadius: 1 }} />Gemiddelde ({fmt(jaarBarGemiddelde)}/jaar)
+                    </span>
+                  </div>
+                </>
             }
           </Card>
           <Card>
