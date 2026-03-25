@@ -426,7 +426,6 @@ export default function App() {
   const verlopenJaren = Math.max((nu - aankoopDt)        / (365.25 * 864e5), 0.01);
   const totaleKm      = Math.round(state.jaarlijkseKm * bezitsjaren);
   const geredenKm     = Math.max(state.jaarlijkseKm * verlopenJaren, 1);
-  const latestKmStand = [...state.kosten, ...mrbPosten, ...verzPosten].filter(k => k.km && Number(k.km) > 0).reduce((max, k) => Math.max(max, Number(k.km)), 0);
 
   const mrbSchatting = berekenMRBSchatting(state.gewichtKg, state.brandstof, state.provincie);
   const mrbKwartaal  = getMrbKwartaal(mrbSchatting, state.mrbWerkelijkMaand);
@@ -439,6 +438,7 @@ export default function App() {
     : [];
 
   const alleKosten = [...state.kosten, ...mrbPosten, ...verzPosten];
+  const latestKmStand = alleKosten.filter(k => k.km && Number(k.km) > 0).reduce((max, k) => Math.max(max, Number(k.km)), 0);
 
   const totaalKosten   = alleKosten.reduce((s, k) => s + Number(k.bedrag), 0);
   const totaleAfschr   = state.aankoopprijs - state.verwachtVerkoopprijs;
