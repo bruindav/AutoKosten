@@ -150,6 +150,9 @@ function defaultState() {
     verwachteVerkoopdatum: "2027-01-01", verwachtVerkoopprijs: 12000,
     jaarlijkseKm: 15000, cataloguswaarde: 30000,
     leaseLooptijd: 48, leaseKm: 15000, leaseAanbetaling: 0,
+    leaseStijgingPct: 10,
+    gemiddeldVerbruik: "",
+    brandstofPrijs: "",
     mrbAutomatisch: false,
     mrbWerkelijkMaand: "",
     verzekeringAutomatisch: false,
@@ -621,17 +624,31 @@ export default function App() {
   // Sorteer posten binnen elk jaar op datum (nieuwste eerst)
   jarenGesorteerd.forEach(j => groepenPerJaar[j].sort((a,b) => (b.datum||"").localeCompare(a.datum||"")));
 
-  // Grafiekdata
+  // Grafiekdata — inclusief zakelijk lease met inflatie per looptijdperiode
   const kostenPerJaar = {};
   alleKosten.forEach(k => { const j = k.datum?.slice(0,4); if (j) kostenPerJaar[j] = (kostenPerJaar[j]||0)+Number(k.bedrag); });
   const aankoopJaar = aankoopDt.getFullYear();
   const verkoopJaar = verkoopDt.getFullYear();
-  let cumEigen = state.aankoopprijs, cumLease = state.leaseAanbetaling;
+  const leaseStijging = Number(state.leaseStijgingPct || 10) / 100;
+  const looptijdJr    = (Number(state.leaseLooptijd) || 48) / 12;
+
+  let cumEigen = state.aankoopprijs;
+  let cumLeasePriv = state.leaseAanbetaling;
+  let cumLeaseZak  = state.leaseAanbetaling;
   const grafiekData = [];
   for (let j = aankoopJaar; j <= verkoopJaar; j++) {
-    cumEigen += (kostenPerJaar[String(j)] || 0) + afschrJaar;
-    cumLease += leasePrive * 12;
-    grafiekData.push({ jaar: String(j), "Eigen auto": Math.round(cumEigen), "Privé lease": Math.round(cumLease) });
+    const periodeNr    = Math.floor((j - aankoopJaar) / looptijdJr);  // 0, 1, 2 …
+    const leasePrivPeriode = Math.round(leasePrive * Math.pow(1 + leaseStijging, periodeNr));
+    const leaseZakPeriode  = Math.round((leasePrive + bijtellingBelasting) * Math.pow(1 + leaseStijging, periodeNr));
+    cumEigen     += (kostenPerJaar[String(j)] || 0) + afschrJaar;
+    cumLeasePriv += leasePrivPeriode * 12;
+    cumLeaseZak  += leaseZakPeriode  * 12;
+    grafiekData.push({
+      jaar: String(j),
+      "Eigen auto":      Math.round(cumEigen),
+      "Privé lease":     Math.round(cumLeasePriv),
+      "Zakelijk lease":  Math.round(cumLeaseZak),
+    });
   }
   // jaarBarData: per jaar vast + variabel gesplitst
   const jaarBarData = (() => {
@@ -806,6 +823,40 @@ export default function App() {
                       <label style={{ fontSize: 13, color: "#666", width: 90, flexShrink: 0 }}>Gewicht (kg)</label>
                       <input type="number" value={state.gewichtKg} onChange={e => set("gewichtKg", e.target.value)} style={{ flex: 1, minWidth: 0 }} />
                     </div>
+                    {/* Verbruik + brandstofprijs */}
+                    {(() => {
+                      const isElektrisch = (state.brandstof || "").toLowerCase().includes("elektr");
+                      const verbruikLabel = isElektrisch ? "Verbruik (kWh/km)" : "Verbruik (1/km)";
+                      const prijsLabel    = isElektrisch ? "Prijs per kWh (€)" : "Prijs per liter (€)";
+                      const verbruik = Number(state.gemiddeldVerbruik) || 0;
+                      const prijs    = Number(state.brandstofPrijs) || 0;
+                      const kmJaar   = Number(state.jaarlijkseKm) || 0;
+                      const brandstofJaar = verbruik > 0 && prijs > 0 && kmJaar > 0
+                        ? Math.round(kmJaar * verbruik * prijs) : 0;
+                      return (
+                        <>
+                          <div style={{ borderTop: "0.5px solid #f0ede8", margin: "10px 0 8px", paddingTop: 8, fontSize: 11, color: "#bbb", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                            {isElektrisch ? "Energieverbruik" : "Brandstofverbruik"}
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                            <label style={{ fontSize: 13, color: "#666", width: 90, flexShrink: 0 }}>{verbruikLabel}</label>
+                            <input type="number" step="0.01" placeholder={isElektrisch ? "bijv. 0.18" : "bijv. 0.055"} value={state.gemiddeldVerbruik}
+                              onChange={e => set("gemiddeldVerbruik", e.target.value)} style={{ flex: 1, minWidth: 0 }} />
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                            <label style={{ fontSize: 13, color: "#666", width: 90, flexShrink: 0 }}>{prijsLabel}</label>
+                            <input type="number" step="0.01" placeholder={isElektrisch ? "bijv. 0.28" : "bijv. 1.85"} value={state.brandstofPrijs}
+                              onChange={e => set("brandstofPrijs", e.target.value)} style={{ flex: 1, minWidth: 0 }} />
+                          </div>
+                          {brandstofJaar > 0 && (
+                            <div style={{ padding: "7px 10px", background: "#f0faf4", borderRadius: 6, fontSize: 12, color: "#27500A" }}>
+                              Schatting: <b>{fmt(brandstofJaar)}/jaar</b> · {fmt(Math.round(brandstofJaar / 12))}/maand
+                              <span style={{ color: "#bbb", marginLeft: 6 }}>({fmtN(kmJaar)} km × {state.gemiddeldVerbruik} × €{state.brandstofPrijs})</span>
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                   <div style={{ flex: "1 1 220px" }}>
                     <div style={{ fontSize: 12, color: "#bbb", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Financieel</div>
@@ -1419,27 +1470,35 @@ export default function App() {
       {tab === "grafiek" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
           <Card>
-            <SectionTitle>Cumulatieve kosten: eigen auto vs. privé lease</SectionTitle>
+            <SectionTitle>Cumulatieve kosten: eigen auto vs. lease</SectionTitle>
             <div style={{ fontSize: 13, color: "#999", marginBottom: 14 }}>
-              Eigen auto: aankoopprijs {fmt(state.aankoopprijs)} + afschrijving + gemaakte kosten. Lease: {fmt(leasePrive)}/maand.
+              Eigen auto: aankoopprijs {fmt(state.aankoopprijs)} + afschrijving + gemaakte kosten.
+              Lease: {fmt(leasePrive)}/mnd (stijgt {state.leaseStijgingPct || 10}% per {state.leaseLooptijd || 48} mnd).
             </div>
-            <ResponsiveContainer width="100%" height={270}>
+            <ResponsiveContainer width="100%" height={290}>
               <LineChart data={grafiekData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0ede8" />
                 <XAxis dataKey="jaar" tick={{ fontSize: 12 }} />
                 <YAxis tickFormatter={v => `€${Math.round(v/1000)}k`} tick={{ fontSize: 12 }} width={54} />
                 <Tooltip content={<CustomTooltip />} />
-                <Legend wrapperStyle={{ fontSize: 13 }} />
-                <Line type="monotone" dataKey="Eigen auto"  stroke={COLORS.primary} strokeWidth={2.5} dot={{ r: 3 }} />
-                <Line type="monotone" dataKey="Privé lease" stroke={COLORS.lease}   strokeWidth={2.5} dot={{ r: 3 }} strokeDasharray="6 3" />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Line type="monotone" dataKey="Eigen auto"     stroke={COLORS.primary} strokeWidth={2.5} dot={{ r: 3 }} />
+                <Line type="monotone" dataKey="Privé lease"    stroke={COLORS.lease}   strokeWidth={2}   dot={{ r: 2 }} strokeDasharray="6 3" />
+                <Line type="monotone" dataKey="Zakelijk lease" stroke="#8E44AD"        strokeWidth={2}   dot={{ r: 2 }} strokeDasharray="3 3" />
               </LineChart>
             </ResponsiveContainer>
             {grafiekData.length > 1 && (() => {
-              const v = grafiekData[grafiekData.length-1]["Eigen auto"] - grafiekData[grafiekData.length-1]["Privé lease"];
+              const last = grafiekData[grafiekData.length - 1];
+              const vPriv = last["Eigen auto"] - last["Privé lease"];
+              const vZak  = last["Eigen auto"] - last["Zakelijk lease"];
               return (
-                <div style={{ marginTop: 12, padding: "10px 14px", background: v > 0 ? "#fdf3ef" : "#f0faf4", borderRadius: 8, fontSize: 13 }}>
-                  {v > 0 ? `📊 Na ${Math.ceil(bezitsjaren)} jaar is eigen auto ${fmt(v)} duurder dan privé lease.`
-                         : `📊 Na ${Math.ceil(bezitsjaren)} jaar is eigen auto ${fmt(Math.abs(v))} goedkoper dan privé lease.`}
+                <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+                  <div style={{ padding: "8px 14px", background: vPriv > 0 ? "#fdf3ef" : "#f0faf4", borderRadius: 8, fontSize: 13 }}>
+                    📋 Privé lease: na {Math.ceil(bezitsjaren)} jaar is eigen auto <b>{fmt(Math.abs(vPriv))} {vPriv > 0 ? "duurder" : "goedkoper"}</b>
+                  </div>
+                  <div style={{ padding: "8px 14px", background: vZak > 0 ? "#fdf3ef" : "#f0faf4", borderRadius: 8, fontSize: 13 }}>
+                    💼 Zakelijk lease: na {Math.ceil(bezitsjaren)} jaar is eigen auto <b>{fmt(Math.abs(vZak))} {vZak > 0 ? "duurder" : "goedkoper"}</b>
+                  </div>
                 </div>
               );
             })()}
@@ -1519,6 +1578,13 @@ export default function App() {
               <Row label="Looptijd (mnd)"  wide><input type="number" value={state.leaseLooptijd}   onChange={e => set("leaseLooptijd",   Number(e.target.value))} style={{ flex: 1 }} /></Row>
               <Row label="Km per jaar"     wide><input type="number" value={state.leaseKm}          onChange={e => set("leaseKm",          Number(e.target.value))} style={{ flex: 1 }} /></Row>
               <Row label="Aanbetaling"     wide><input type="number" value={state.leaseAanbetaling} onChange={e => set("leaseAanbetaling", Number(e.target.value))} style={{ flex: 1 }} /></Row>
+              <Row label="Stijging 2e periode (%)" wide>
+                <input type="number" step="1" placeholder="10" value={state.leaseStijgingPct ?? 10}
+                  onChange={e => set("leaseStijgingPct", Number(e.target.value))} style={{ flex: 1 }} />
+              </Row>
+              <div style={{ fontSize: 12, color: "#bbb", marginTop: 4 }}>
+                ⓘ Na {state.leaseLooptijd || 48} maanden stijgt het leasebedrag met {state.leaseStijgingPct ?? 10}% voor de volgende periode. Gebruikt in de cumulatieve grafiek.
+              </div>
               <Row label="Bijtelling (%)"  wide>
                 <select value={state.bijtellingPct} onChange={e => set("bijtellingPct", Number(e.target.value))} style={{ flex: 1 }}>
                   <option value={16}>16% (volledig elektrisch)</option>
