@@ -155,8 +155,7 @@ function defaultState() {
     verzekeringAutomatisch: false,
     verzekeringType: "allrisk",
     verzekeringJaren: [],
-    pechhulpType: "",
-    pechhulpJaar: null,
+    pechhulpJaren: [],
     huidigeKmStand: null,
     mobiliteitBrutoMaand: "",
     kmVergTarief: "0.23",
@@ -513,27 +512,26 @@ export default function App() {
     ? genereerVerzekeringPosten(state.aankoopdatum, state.verwachteVerkoopdatum, state.verzekeringJaren)
     : [];
 
-  // Pechhulp: één post per jaar automatisch genereren
+  // Pechhulp: per jaar opgegeven via pechhulpJaren array
   const pechhulpPosten = (() => {
-    if (!state.pechhulpType || !state.pechhulpJaar || state.pechhulpJaar <= 0) return [];
-    const start = new Date(state.aankoopdatum);
+    if (!state.pechhulpJaren?.length) return [];
     const einde = new Date(state.verwachteVerkoopdatum);
-    const posten = [];
-    for (let j = start.getFullYear(); j <= einde.getFullYear(); j++) {
-      const d = new Date(j, start.getMonth(), 1);
-      if (d < start || d > einde) continue;
-      posten.push({
-        id: `pech_${j}`,
+    const start = new Date(state.aankoopdatum);
+    return state.pechhulpJaren.flatMap(pj => {
+      if (!pj.type || !pj.bedrag || pj.bedrag <= 0) return [];
+      const d = new Date(pj.startJaar, start.getMonth(), 1);
+      if (d < start || d > einde) return [];
+      return [{
+        id: `pech_${pj.startJaar}`,
         datum: d.toISOString().slice(0,10),
         categorie: "verzekering",
-        bedrag: state.pechhulpJaar,
+        bedrag: pj.bedrag,
         km: null,
-        omschrijving: `Pechhulp ${state.pechhulpType.includes("anwb") ? "ANWB" : "pechhulp"} ${j}`,
+        omschrijving: `Pechhulp ${pj.type.includes("anwb") ? "ANWB" : pj.type} ${pj.startJaar}`,
         automatisch: true,
         type: "pechhulp",
-      });
-    }
-    return posten;
+      }];
+    });
   })();
 
   const alleKosten = [...state.kosten, ...mrbPosten, ...verzPosten, ...pechhulpPosten];
@@ -823,90 +821,119 @@ export default function App() {
             },
             {
               key: "verzekering", titel: "Verzekering & pechhulp",
-              inhoud: (
-                <div>
-                  {/* Verzekering hoofddekking */}
-                  <div style={{ marginBottom: 14 }}>
-                    <div style={{ fontSize: 12, color: "#bbb", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Autoverzekering</div>
-                    <Row label="Type dekking" wide>
-                      <select value={state.verzekeringType || "allrisk"} onChange={e => set("verzekeringType", e.target.value)} style={{ flex: 1 }}>
-                        <option value="allrisk">All risk (volledig casco)</option>
-                        <option value="beperktcasco">Beperkt casco (BC)</option>
-                        <option value="wettelijk">WA (wettelijke aansprakelijkheid)</option>
-                        <option value="waplusbs">WA+ (bijzondere schade)</option>
-                      </select>
-                    </Row>
+              inhoud: (() => {
+                // Gecombineerde tabel: per jaar: type, premie, pechhulp
+                const verzJarenMap = {};
+                (state.verzekeringJaren || []).forEach(v => { verzJarenMap[v.startJaar] = v; });
+                const pechhulpJarenMap = {};
+                (state.pechhulpJaren || []).forEach(v => { pechhulpJarenMap[v.startJaar] = v; });
+
+                // Alle jaren in bezitsperiode
+                const aantalJr = Math.ceil(bezitsjaren) + 1;
+                const startJr  = aankoopDt.getFullYear();
+                const jarenLijst = Array.from({ length: Math.max(aantalJr, 1) }, (_, i) => startJr + i)
+                  .filter(j => j <= verkoopDt.getFullYear());
+
+                const VERZ_TYPEN = [
+                  { value: "", label: "Niet ingevuld" },
+                  { value: "allrisk", label: "All risk" },
+                  { value: "beperktcasco", label: "Beperkt casco" },
+                  { value: "wettelijk", label: "WA" },
+                  { value: "waplus", label: "WA+" },
+                ];
+                const PECH_TYPEN = [
+                  { value: "", label: "Geen" },
+                  { value: "anwb_basis", label: "ANWB Basis" },
+                  { value: "anwb_compleet", label: "ANWB Compleet" },
+                  { value: "anwb_europa", label: "ANWB Europa" },
+                  { value: "aa", label: "AutoMobiel" },
+                  { value: "anders", label: "Anders" },
+                ];
+
+                const updateVerzJaar = (jaar, key, val) => {
+                  const bestaand = state.verzekeringJaren || [];
+                  const idx = bestaand.findIndex(v => v.startJaar === jaar);
+                  let nieuw;
+                  if (idx >= 0) {
+                    nieuw = bestaand.map((v, i) => i === idx ? { ...v, [key]: val } : v);
+                  } else {
+                    nieuw = [...bestaand, { startJaar: jaar, bedrag: 0, type: "allrisk", [key]: val }];
+                  }
+                  set("verzekeringJaren", nieuw);
+                };
+
+                const updatePechJaar = (jaar, key, val) => {
+                  const bestaand = state.pechhulpJaren || [];
+                  const idx = bestaand.findIndex(v => v.startJaar === jaar);
+                  let nieuw;
+                  if (idx >= 0) {
+                    nieuw = bestaand.map((v, i) => i === idx ? { ...v, [key]: val } : v);
+                  } else {
+                    nieuw = [...bestaand, { startJaar: jaar, type: "", bedrag: 0, [key]: val }];
+                  }
+                  set("pechhulpJaren", nieuw);
+                };
+
+                return (
+                  <div>
                     <Toggle checked={state.verzekeringAutomatisch} onChange={v => set("verzekeringAutomatisch", v)}
                       label="Premie automatisch splitsen in maandposten"
-                      sub="Voer per jaar een jaarbedrag in — de app maakt 12 maandposten aan" />
-                    {state.verzekeringAutomatisch && (
-                      <div style={{ marginTop: 10 }}>
-                        {state.verzekeringJaren.length > 0 && (
-                          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, marginBottom: 10 }}>
-                            <thead><tr style={{ borderBottom: "0.5px solid #e8e6e0" }}>
-                              {["Jaar","Jaarbedrag","Per maand",""].map(h => <th key={h} style={{ textAlign: "left", padding: "5px 8px", fontWeight: 500, color: "#bbb" }}>{h}</th>)}
-                            </tr></thead>
-                            <tbody>
-                              {state.verzekeringJaren.map(v => (
-                                <tr key={v.startJaar} style={{ borderBottom: "0.5px solid #f0ede8" }}>
-                                  <td style={{ padding: "6px 8px", fontWeight: 500 }}>{v.startJaar}</td>
-                                  <td style={{ padding: "6px 8px" }}>{fmt(v.bedrag)}</td>
-                                  <td style={{ padding: "6px 8px", color: "#888" }}>{fmt(Math.round(v.bedrag / 12))}</td>
-                                  <td style={{ padding: "6px 8px" }}>
-                                    <button onClick={() => set("verzekeringJaren", state.verzekeringJaren.filter(x => x.startJaar !== v.startJaar))}
-                                      style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.danger, fontSize: 14 }}>✕</button>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        )}
-                        <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                            <label style={{ fontSize: 12, color: "#999" }}>Jaar</label>
-                            <input type="number" value={nieuwVerzJaar} onChange={e => setNieuwVerzJaar(e.target.value)} style={{ width: 80 }} />
-                          </div>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                            <label style={{ fontSize: 12, color: "#999" }}>Jaarbedrag (€)</label>
-                            <input type="number" placeholder="bijv. 1200" value={nieuwVerzBedrag} onChange={e => setNieuwVerzBedrag(e.target.value)} onKeyDown={e => e.key === "Enter" && voegVerzJaarToe()} style={{ width: 150 }} />
-                          </div>
-                          <button onClick={voegVerzJaarToe} style={{ background: COLORS.primary, color: "#fff", border: "none", borderRadius: 6, padding: "9px 14px", cursor: "pointer", fontWeight: 500 }}>+ Toevoegen</button>
-                        </div>
-                        {verzPosten.length > 0 && <div style={{ marginTop: 8, fontSize: 12, color: COLORS.success }}>✓ {verzPosten.length} maandposten toegevoegd</div>}
+                      sub="Vul per jaar premie in — de app maakt 12 maandposten aan" />
+
+                    <div style={{ marginTop: 12, overflowX: "auto" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                        <thead>
+                          <tr style={{ borderBottom: "0.5px solid #e8e6e0" }}>
+                            <th style={{ textAlign: "left", padding: "6px 8px", fontWeight: 500, color: "#bbb", width: 50 }}>Jaar</th>
+                            <th style={{ textAlign: "left", padding: "6px 8px", fontWeight: 500, color: "#bbb" }}>Type dekking</th>
+                            <th style={{ textAlign: "left", padding: "6px 8px", fontWeight: 500, color: "#bbb", width: 110 }}>Jaarpremie (€)</th>
+                            <th style={{ textAlign: "left", padding: "6px 8px", fontWeight: 500, color: "#bbb" }}>Pechhulp</th>
+                            <th style={{ textAlign: "left", padding: "6px 8px", fontWeight: 500, color: "#bbb", width: 90 }}>Pechhulp (€/jr)</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {jarenLijst.map(jaar => {
+                            const vj = verzJarenMap[jaar] || {};
+                            const pj = pechhulpJarenMap[jaar] || {};
+                            return (
+                              <tr key={jaar} style={{ borderBottom: "0.5px solid #f5f4f0" }}>
+                                <td style={{ padding: "6px 8px", fontWeight: 600 }}>{jaar}</td>
+                                <td style={{ padding: "6px 4px" }}>
+                                  <select value={vj.type || ""} onChange={e => updateVerzJaar(jaar, "type", e.target.value)}
+                                    style={{ width: "100%", fontSize: 13 }}>
+                                    {VERZ_TYPEN.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                                  </select>
+                                </td>
+                                <td style={{ padding: "6px 4px" }}>
+                                  <input type="number" placeholder="0" value={vj.bedrag || ""}
+                                    onChange={e => updateVerzJaar(jaar, "bedrag", e.target.value ? Number(e.target.value) : 0)}
+                                    style={{ width: "100%" }} />
+                                </td>
+                                <td style={{ padding: "6px 4px" }}>
+                                  <select value={pj.type || ""} onChange={e => updatePechJaar(jaar, "type", e.target.value)}
+                                    style={{ width: "100%", fontSize: 13 }}>
+                                    {PECH_TYPEN.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                                  </select>
+                                </td>
+                                <td style={{ padding: "6px 4px" }}>
+                                  <input type="number" placeholder="0" value={pj.bedrag || ""}
+                                    onChange={e => updatePechJaar(jaar, "bedrag", e.target.value ? Number(e.target.value) : 0)}
+                                    style={{ width: "100%" }} />
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    {verzPosten.length > 0 && (
+                      <div style={{ marginTop: 8, fontSize: 12, color: COLORS.success }}>
+                        ✓ {verzPosten.length} maandposten verzekering · {pechhulpPosten.length} pechhulp-posten toegevoegd aan kostenlijst
                       </div>
                     )}
                   </div>
-
-                  {/* Pechhulp */}
-                  <div style={{ borderTop: "0.5px solid #f0ede8", paddingTop: 14 }}>
-                    <div style={{ fontSize: 12, color: "#bbb", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Pechhulpverzekering</div>
-                    <Row label="Aanbieder" wide>
-                      <select value={state.pechhulpType || ""} onChange={e => set("pechhulpType", e.target.value)} style={{ flex: 1 }}>
-                        <option value="">Geen pechhulp</option>
-                        <option value="anwb_basis">ANWB Wegenwacht Basis</option>
-                        <option value="anwb_compleet">ANWB Wegenwacht Compleet</option>
-                        <option value="anwb_europa">ANWB Wegenwacht Europa</option>
-                        <option value="aa_basis">AutoMobiel Hulp Basis</option>
-                        <option value="verzekering">Via autoverzekering</option>
-                        <option value="anders">Anders</option>
-                      </select>
-                    </Row>
-                    {state.pechhulpType && state.pechhulpType !== "" && (
-                      <>
-                        <Row label="Jaarpremie (€)" wide>
-                          <input type="number" placeholder="bijv. 95" value={state.pechhulpJaar || ""} onChange={e => set("pechhulpJaar", e.target.value ? Number(e.target.value) : null)} style={{ flex: 1 }} />
-                        </Row>
-                        {state.pechhulpJaar > 0 && (
-                          <div style={{ padding: "8px 12px", background: "#f7f6f2", borderRadius: 8, fontSize: 13, marginTop: 4 }}>
-                            {fmt(state.pechhulpJaar)}/jaar · {fmt(Math.round(state.pechhulpJaar / 12))}/maand
-                            <span style={{ color: "#bbb", marginLeft: 8, fontSize: 11 }}>— wordt als aparte post in kostenlijst getoond</span>
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </div>
-              ),
+                );
+              })(),
             },
             {
               key: "vergoedingen", titel: "Vergoedingen van werkgever",
@@ -920,19 +947,23 @@ export default function App() {
                         <input type="number" placeholder="bijv. 300" value={state.mobiliteitBrutoMaand} onChange={e => set("mobiliteitBrutoMaand", e.target.value)} style={{ flex: 1 }} />
                       </Row>
                       <Row label="Belastingschijf" wide>
-                        <select value={state.belastingschijf}
-                          onChange={e => set("belastingschijf", Number(e.target.value))}
-                          style={{ flex: 1 }}>
-                          <option value={36.97}>36,97% (schijf 1, tot ~€75.518)</option>
-                          <option value={49.50}>49,50% (schijf 2, boven ~€75.518)</option>
-                        </select>
-                        <input type="number" step="0.1" value={state.belastingschijf}
-                          onChange={e => set("belastingschijf", Number(e.target.value))}
-                          style={{ width: 70, marginLeft: 6 }}
-                          title="Handmatig aanpassen" />
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1 }}>
+                          <select value={state.belastingschijf}
+                            onChange={e => set("belastingschijf", Number(e.target.value))}
+                            style={{ width: "100%", fontSize: 13 }}>
+                            <option value={36.97}>36,97% — schijf 1 (tot ~€75.518)</option>
+                            <option value={49.50}>49,50% — schijf 2 (boven ~€75.518)</option>
+                          </select>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span style={{ fontSize: 11, color: "#bbb", flexShrink: 0 }}>Afwijkend %:</span>
+                            <input type="number" step="0.1" value={state.belastingschijf}
+                              onChange={e => set("belastingschijf", Number(e.target.value))}
+                              style={{ width: 70, fontSize: 13 }} />
+                          </div>
+                        </div>
                       </Row>
                       {mobBrutoMaand > 0 && (
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "#f0faf4", borderRadius: 8, fontSize: 13 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "#f0faf4", borderRadius: 8, fontSize: 13, marginTop: 4 }}>
                           <span><b>{fmt(mobBrutoMaand)}</b> bruto</span>
                           <span style={{ color: "#bbb" }}>→</span>
                           <span><b style={{ color: COLORS.success }}>{fmt(mobNettoMaand)}</b> netto/mnd</span>
@@ -952,9 +983,9 @@ export default function App() {
                         <input type="number" placeholder="overschrijft tarief×km" value={state.kmVergMaandTotaal} onChange={e => set("kmVergMaandTotaal", e.target.value)} style={{ flex: 1 }} />
                       </Row>
                       {kmVergBruto > 0 && (
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "#f0faf4", borderRadius: 8, fontSize: 13 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "#f0faf4", borderRadius: 8, fontSize: 13, marginTop: 4 }}>
                           <span><b>{fmt(kmVergBruto)}</b> bruto</span>
-                          {belastbaar > 0 && <span style={{ color: "#bbb", fontSize: 11 }}>({fmt(vrijgesteld)} vrij · {fmt(belastbaar)} belast)</span>}
+                          {belastbaar > 0 && <span style={{ color: "#bbb", fontSize: 11 }}>({fmt(vrijgesteld)} vrij)</span>}
                           <span style={{ color: "#bbb" }}>→</span>
                           <span><b style={{ color: COLORS.success }}>{fmt(kmVergNetto)}</b> netto/mnd</span>
                         </div>
