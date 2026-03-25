@@ -1,5 +1,6 @@
 *, *::before, *::after { box-sizing: border-box; }
 body { margin: 0; background: #f5f4f0; }
+
 input, select, textarea, button {
   font-family: inherit;
   font-size: 14px;
@@ -11,8 +12,26 @@ input, select, textarea {
   padding: 7px 10px;
   background: #fff;
   color: #1a1a1a;
+  /* Prevent iOS zoom on focus (font-size must be >=16px or use transform) */
+  font-size: 16px;
 }
-input:focus, select:focus, textarea:focus {
-  border-color: #1B4F72;
-}
+input:focus, select:focus, textarea:focus { border-color: #1B4F72; }
 button { cursor: pointer; }
+
+/* Mobile: prevent horizontal scroll */
+#root { overflow-x: hidden; }
+
+/* Mobile: tighter padding */
+@media (max-width: 600px) {
+  input, select { font-size: 16px; }
+
+  /* Metric cards: 2 per row op mobiel */
+  .metric-grid { display: grid !important; grid-template-columns: 1fr 1fr !important; }
+
+  /* Header: stack op mobiel */
+  .app-header { flex-direction: column !important; align-items: flex-start !important; }
+
+  /* Tab bar: scroll horizontaal */
+  .tab-bar { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .tab-bar::-webkit-scrollbar { display: none; }
+}

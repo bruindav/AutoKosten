@@ -155,6 +155,7 @@ function defaultState() {
     mrbWerkelijkMaand: "",
     verzekeringAutomatisch: false,
     verzekeringJaren: [],
+    huidigeKmStand: null,
     mobiliteitBrutoMaand: "",
     kmVergTarief: "0.23",
     kmVergKmMaand: "",
@@ -375,6 +376,7 @@ export default function App() {
   const [samPeriode, setSamPeriode] = useState("gem_aankoop");
   const [perMaand, setPerMaand] = useState(true);
   const [openSec, setOpenSec] = useState({ kosten: false, vergoed: false });
+  const [showNieuwKost, setShowNieuwKost] = useState(false);
   const [importText, setImportText] = useState("");
   const [importError, setImportError] = useState("");
   const [saveFlash, setSaveFlash]   = useState(false);
@@ -424,6 +426,7 @@ export default function App() {
   const verlopenJaren = Math.max((nu - aankoopDt)        / (365.25 * 864e5), 0.01);
   const totaleKm      = Math.round(state.jaarlijkseKm * bezitsjaren);
   const geredenKm     = Math.max(state.jaarlijkseKm * verlopenJaren, 1);
+  const latestKmStand = [...state.kosten, ...mrbPosten, ...verzPosten].filter(k => k.km && Number(k.km) > 0).reduce((max, k) => Math.max(max, Number(k.km)), 0);
 
   const mrbSchatting = berekenMRBSchatting(state.gewichtKg, state.brandstof, state.provincie);
   const mrbKwartaal  = getMrbKwartaal(mrbSchatting, state.mrbWerkelijkMaand);
@@ -563,34 +566,41 @@ export default function App() {
     <div style={{ fontFamily: "system-ui, -apple-system, sans-serif", color: "#1a1a1a", maxWidth: 940, margin: "0 auto", padding: "1.5rem 1rem 4rem" }}>
 
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "1.5rem", flexWrap: "wrap", gap: 12 }}>
-        <div>
+      <div className="app-header" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "1.5rem", flexWrap: "wrap", gap: 12 }}>
+        <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.1em", color: "#bbb", textTransform: "uppercase", marginBottom: 4 }}>
             AutoKosten {APP_VERSION}
             {saveFlash && <span style={{ marginLeft: 12, color: COLORS.success, fontWeight: 400 }}>✓ opgeslagen</span>}
           </div>
-          <h1 style={{ margin: 0, fontSize: 26, fontWeight: 600 }}>
+          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 600, wordBreak: "break-word" }}>
             {state.merk && state.model ? `${state.merk} ${state.model}` : "Mijn auto"}
           </h1>
-          {state.bouwjaar && <div style={{ fontSize: 13, color: "#999", marginTop: 2 }}>{state.bouwjaar} · {state.brandstof} · {state.kenteken}{state.gewichtKg ? ` · ${fmtN(state.gewichtKg)} kg` : ""}</div>}
+          {state.bouwjaar && <div style={{ fontSize: 13, color: "#999", marginTop: 2, flexWrap: "wrap" }}>{state.bouwjaar} · {state.brandstof} · {state.kenteken}{state.gewichtKg ? ` · ${fmtN(state.gewichtKg)} kg` : ""}{(state.huidigeKmStand || latestKmStand) ? ` · ${fmtN(state.huidigeKmStand || latestKmStand)} km` : ""}</div>}
         </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", width: "100%" }}>
           <MetricCard label="Totaalkosten"  value={fmt(totaalKosten + totaleAfschr)} sub="incl. afschrijving" />
           <MetricCard label="Per maand"     value={fmt(eigenMaand)}  sub="incl. afschr." color={COLORS.accent} />
           <MetricCard label="Per km"        value={fmtC(kmTotaal)}   sub="vast + variabel" color={COLORS.primary} />
         </div>
       </div>
 
-      <TabBar
-        tabs={[
-          { id: "auto",    label: "🚗 Mijn auto" },
+      <div className="tab-bar" style={{ display: "flex", gap: 2, borderBottom: "1px solid #e8e6e0", marginBottom: "1.5rem" }}>
+        {[
+          { id: "auto",    label: "🚗 Auto" },
           { id: "kosten",  label: "📊 Kosten" },
-          { id: "grafiek", label: "📈 Grafieken" },
-          { id: "lease",   label: "🔄 Lease vergelijk" },
-          { id: "import",  label: "⬆ Import/Export" },
-        ]}
-        active={tab} onChange={setTab}
-      />
+          { id: "grafiek", label: "📈 Grafiek" },
+          { id: "lease",   label: "🔄 Lease" },
+          { id: "import",  label: "⬆ Import" },
+        ].map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)} style={{
+            padding: "10px 12px", fontSize: 13, fontWeight: tab === t.id ? 600 : 400,
+            background: "none", border: "none", whiteSpace: "nowrap",
+            borderBottom: tab === t.id ? `2px solid ${COLORS.primary}` : "2px solid transparent",
+            color: tab === t.id ? COLORS.primary : "#999",
+            cursor: "pointer", marginBottom: -1,
+          }}>{t.label}</button>
+        ))}
+      </div>
 
       {/* ══ TAB AUTO ══ */}
       {tab === "auto" && (
@@ -639,6 +649,20 @@ export default function App() {
               <Row label="Verwacht weg"><input type="date" value={state.verwachteVerkoopdatum} onChange={e => set("verwachteVerkoopdatum", e.target.value)} style={{ flex: 1 }} /></Row>
               <Row label="Verkoopprijs"><input type="number" value={state.verwachtVerkoopprijs} onChange={e => set("verwachtVerkoopprijs", Number(e.target.value))} style={{ flex: 1 }} /></Row>
               <Row label="Km per jaar"><input type="number" value={state.jaarlijkseKm} onChange={e => set("jaarlijkseKm", Number(e.target.value))} style={{ flex: 1 }} /></Row>
+              {/* Huidige km-stand */}
+              <Row label="Huidige km-stand">
+                <input type="number"
+                  value={state.huidigeKmStand ?? latestKmStand ?? ""}
+                  onChange={e => set("huidigeKmStand", e.target.value ? Number(e.target.value) : null)}
+                  placeholder={latestKmStand ? fmtN(latestKmStand) : "uit kostenposten"}
+                  style={{ flex: 1 }} />
+                {latestKmStand > 0 && (
+                  <button onClick={() => set("huidigeKmStand", latestKmStand)}
+                    style={{ fontSize: 11, background: "none", border: "0.5px solid #e0ddd8", borderRadius: 4, padding: "4px 8px", cursor: "pointer", color: "#999", whiteSpace: "nowrap" }}>
+                    ← {fmtN(latestKmStand)} km
+                  </button>
+                )}
+              </Row>
             </Card>
           </div>
 
@@ -904,38 +928,6 @@ export default function App() {
       {/* ══ TAB KOSTEN ══ */}
       {tab === "kosten" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-          <Card>
-            <SectionTitle>Kostenpost toevoegen</SectionTitle>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
-              {[
-                { label: "Datum",      type: "date",   key: "datum",  w: 145 },
-                { label: "Bedrag (€)", type: "number", key: "bedrag", w: 90 },
-                { label: "Km-stand",   type: "number", key: "km",     w: 110, ph: "optioneel" },
-              ].map(f => (
-                <div key={f.key} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  <label style={{ fontSize: 12, color: "#999" }}>{f.label}</label>
-                  <input type={f.type} placeholder={f.ph} value={nieuwKost[f.key]}
-                    onChange={e => setNieuwKost(p => ({ ...p, [f.key]: e.target.value }))} style={{ width: f.w }} />
-                </div>
-              ))}
-              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <label style={{ fontSize: 12, color: "#999" }}>Categorie</label>
-                <select value={nieuwKost.categorie} onChange={e => setNieuwKost(p => ({ ...p, categorie: e.target.value }))} style={{ width: 175 }}>
-                  {COST_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.icon} {c.label}</option>)}
-                </select>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1, minWidth: 120 }}>
-                <label style={{ fontSize: 12, color: "#999" }}>Omschrijving</label>
-                <input placeholder="optioneel" value={nieuwKost.omschrijving}
-                  onChange={e => setNieuwKost(p => ({ ...p, omschrijving: e.target.value }))}
-                  onKeyDown={e => e.key === "Enter" && voegToe()} />
-              </div>
-              <button onClick={voegToe}
-                style={{ background: COLORS.primary, color: "#fff", border: "none", borderRadius: 6, padding: "9px 16px", cursor: "pointer", fontWeight: 500, whiteSpace: "nowrap" }}>
-                + Toevoegen
-              </button>
-            </div>
-          </Card>
 
           {/* ── Jaar-selector voor analyse ── */}
           {(() => {
@@ -999,25 +991,19 @@ export default function App() {
 
             return (
               <Card>
-                {/* Periode-knoppen */}
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: "1rem", flexWrap: "wrap" }}>
-                  <span style={{ fontSize: 12, color: "#999", flexShrink: 0 }}>Periode:</span>
-                  {periodes.map(p => (
-                    <button key={p} onClick={() => {
-                      setAnalyseJaar(p);
-                      // Als een specifiek jaar gekozen: dat jaar openklappen, rest dicht
-                      if (p !== "tot_nu" && p !== "tot_verkoop") {
-                        setOpenJaren(new Set([p]));
-                      }
-                    }}
-                      style={{
-                        padding: "4px 12px", fontSize: 12, borderRadius: 20,
-                        border: analyseJaar === p ? `1.5px solid ${COLORS.primary}` : "0.5px solid #e0ddd8",
-                        background: analyseJaar === p ? COLORS.primary : "#fff",
-                        color: analyseJaar === p ? "#fff" : "#666",
-                        cursor: "pointer", fontWeight: analyseJaar === p ? 600 : 400,
-                      }}>{periodeLabel(p)}</button>
-                  ))}
+                {/* Periode-dropdown */}
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: "1rem", flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 13, color: "#666", flexShrink: 0 }}>Periode:</span>
+                  <select value={analyseJaar} onChange={e => {
+                    const p = e.target.value;
+                    setAnalyseJaar(p);
+                    if (p !== "tot_nu" && p !== "tot_verkoop") setOpenJaren(new Set([p]));
+                  }} style={{ flex: 1, maxWidth: 220 }}>
+                    {periodes.map(p => (
+                      <option key={p} value={p}>{periodeLabel(p)}</option>
+                    ))}
+                  </select>
+                  <span style={{ fontSize: 12, color: "#bbb" }}>{kp.length} posten · {fmt(totKp)}</span>
                 </div>
 
                 {/* Samenvatting periode */}
@@ -1081,9 +1067,14 @@ export default function App() {
 
           {/* Kostenlijst per jaar ingeklapt */}
           <Card>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.875rem" }}>
-              <SectionTitle style={{ margin: 0 }}>Kostenposten per jaar — {alleKosten.length} posten · {fmt(totaalKosten)}</SectionTitle>
-              <div style={{ display: "flex", gap: 6 }}>
+            {/* Header met alles-open/dicht en uitklapbaar invoerblok */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: showNieuwKost ? "0.875rem" : 0, flexWrap: "wrap", gap: 8 }}>
+              <SectionTitle style={{ margin: 0 }}>Kostenposten — {alleKosten.length} posten · {fmt(totaalKosten)}</SectionTitle>
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <button onClick={() => setShowNieuwKost(v => !v)}
+                  style={{ fontSize: 12, background: showNieuwKost ? COLORS.primary : "none", color: showNieuwKost ? "#fff" : COLORS.primary, border: `0.5px solid ${COLORS.primary}`, borderRadius: 4, padding: "4px 10px", cursor: "pointer", fontWeight: 500 }}>
+                  {showNieuwKost ? "✕ Sluiten" : "+ Toevoegen"}
+                </button>
                 <button onClick={() => setOpenJaren(new Set(jarenGesorteerd))}
                   style={{ fontSize: 12, background: "none", border: "0.5px solid #e0ddd8", borderRadius: 4, padding: "3px 10px", cursor: "pointer", color: "#666" }}>
                   Alles open
@@ -1094,6 +1085,41 @@ export default function App() {
                 </button>
               </div>
             </div>
+
+            {/* Uitklapbaar invoerblok */}
+            {showNieuwKost && (
+              <div style={{ background: "#f7f6f2", borderRadius: 8, padding: "12px 14px", marginBottom: "1rem" }}>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+                  {[
+                    { label: "Datum",      type: "date",   key: "datum",  w: 140 },
+                    { label: "Bedrag (€)", type: "number", key: "bedrag", w: 90 },
+                    { label: "Km-stand",   type: "number", key: "km",     w: 100, ph: "optioneel" },
+                  ].map(f => (
+                    <div key={f.key} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <label style={{ fontSize: 12, color: "#999" }}>{f.label}</label>
+                      <input type={f.type} placeholder={f.ph} value={nieuwKost[f.key]}
+                        onChange={e => setNieuwKost(p => ({ ...p, [f.key]: e.target.value }))} style={{ width: f.w }} />
+                    </div>
+                  ))}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <label style={{ fontSize: 12, color: "#999" }}>Categorie</label>
+                    <select value={nieuwKost.categorie} onChange={e => setNieuwKost(p => ({ ...p, categorie: e.target.value }))} style={{ width: 170 }}>
+                      {COST_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.icon} {c.label}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1, minWidth: 110 }}>
+                    <label style={{ fontSize: 12, color: "#999" }}>Omschrijving</label>
+                    <input placeholder="optioneel" value={nieuwKost.omschrijving}
+                      onChange={e => setNieuwKost(p => ({ ...p, omschrijving: e.target.value }))}
+                      onKeyDown={e => e.key === "Enter" && voegToe()} />
+                  </div>
+                  <button onClick={() => { voegToe(); setShowNieuwKost(false); }}
+                    style={{ background: COLORS.primary, color: "#fff", border: "none", borderRadius: 6, padding: "9px 14px", cursor: "pointer", fontWeight: 500, whiteSpace: "nowrap" }}>
+                    + Toevoegen
+                  </button>
+                </div>
+              </div>
+            )}
             {jarenGesorteerd.length === 0 && <div style={{ color: "#bbb", fontSize: 14 }}>Nog geen kosten ingevoerd.</div>}
             {jarenGesorteerd.map(jaar => (
               <JaarGroep
