@@ -478,6 +478,7 @@ export default function App() {
   const [perMaand, setPerMaand] = useState(true);
   const [openSec, setOpenSec] = useState({ kosten: false, vergoed: false });
   const [showNieuwKost, setShowNieuwKost] = useState(false);
+  const [verzTab, setVerzTab] = useState("verz");
   const [openBlokken, setOpenBlokken] = useState({ rdw: false, voertuig: false, mrb: false, verzekering: false, vergoedingen: false });
   const [importText, setImportText] = useState("");
   const [importError, setImportError] = useState("");
@@ -865,107 +866,159 @@ export default function App() {
             {
               key: "verzekering", titel: "Verzekering & pechhulp",
               inhoud: (() => {
-                // Gecombineerde tabel: per jaar: type, premie, pechhulp
+                const VERZ_TYPEN = [
+                  { value: "allrisk",       label: "All risk" },
+                  { value: "beperktcasco",  label: "Beperkt casco" },
+                  { value: "wettelijk",     label: "WA" },
+                  { value: "waplus",        label: "WA+" },
+                ];
+                const PECH_TYPEN = [
+                  { value: "",              label: "Geen" },
+                  { value: "anwb_basis",    label: "ANWB Basis" },
+                  { value: "anwb_compleet", label: "ANWB Compleet" },
+                  { value: "anwb_europa",   label: "ANWB Europa" },
+                  { value: "aa",            label: "AutoMobiel" },
+                  { value: "anders",        label: "Anders" },
+                ];
+
+                // Bestaande jaar-data ophalen
                 const verzJarenMap = {};
                 (state.verzekeringJaren || []).forEach(v => { verzJarenMap[v.startJaar] = v; });
                 const pechhulpJarenMap = {};
                 (state.pechhulpJaren || []).forEach(v => { pechhulpJarenMap[v.startJaar] = v; });
 
-                // Alle jaren in bezitsperiode
                 const aantalJr = Math.ceil(bezitsjaren) + 1;
                 const startJr  = aankoopDt.getFullYear();
                 const jarenLijst = Array.from({ length: Math.max(aantalJr, 1) }, (_, i) => startJr + i)
                   .filter(j => j <= verkoopDt.getFullYear());
 
-                const VERZ_TYPEN = [
-                  { value: "", label: "Niet ingevuld" },
-                  { value: "allrisk", label: "All risk" },
-                  { value: "beperktcasco", label: "Beperkt casco" },
-                  { value: "wettelijk", label: "WA" },
-                  { value: "waplus", label: "WA+" },
-                ];
-                const PECH_TYPEN = [
-                  { value: "", label: "Geen" },
-                  { value: "anwb_basis", label: "ANWB Basis" },
-                  { value: "anwb_compleet", label: "ANWB Compleet" },
-                  { value: "anwb_europa", label: "ANWB Europa" },
-                  { value: "aa", label: "AutoMobiel" },
-                  { value: "anders", label: "Anders" },
-                ];
-
                 const updateVerzJaar = (jaar, key, val) => {
                   const bestaand = state.verzekeringJaren || [];
                   const idx = bestaand.findIndex(v => v.startJaar === jaar);
-                  let nieuw;
-                  if (idx >= 0) {
-                    nieuw = bestaand.map((v, i) => i === idx ? { ...v, [key]: val } : v);
-                  } else {
-                    nieuw = [...bestaand, { startJaar: jaar, bedrag: 0, type: "allrisk", [key]: val }];
-                  }
+                  const nieuw = idx >= 0
+                    ? bestaand.map((v, i) => i === idx ? { ...v, [key]: val } : v)
+                    : [...bestaand, { startJaar: jaar, bedrag: 0, type: "allrisk", [key]: val }];
                   set("verzekeringJaren", nieuw);
                 };
 
                 const updatePechJaar = (jaar, key, val) => {
                   const bestaand = state.pechhulpJaren || [];
                   const idx = bestaand.findIndex(v => v.startJaar === jaar);
-                  let nieuw;
-                  if (idx >= 0) {
-                    nieuw = bestaand.map((v, i) => i === idx ? { ...v, [key]: val } : v);
-                  } else {
-                    nieuw = [...bestaand, { startJaar: jaar, type: "", bedrag: 0, [key]: val }];
-                  }
+                  const nieuw = idx >= 0
+                    ? bestaand.map((v, i) => i === idx ? { ...v, [key]: val } : v)
+                    : [...bestaand, { startJaar: jaar, type: "", bedrag: 0, [key]: val }];
                   set("pechhulpJaren", nieuw);
                 };
 
                 return (
                   <div>
-                    <Toggle checked={state.verzekeringAutomatisch} onChange={v => set("verzekeringAutomatisch", v)}
-                      label="Premie automatisch splitsen in maandposten"
-                      sub="Vul per jaar premie in — de app maakt 12 maandposten aan" />
-
-                    <div style={{ marginTop: 12 }}>
-                      {jarenLijst.map(jaar => {
-                        const vj = verzJarenMap[jaar] || {};
-                        const pj = pechhulpJarenMap[jaar] || {};
-                        const maandBedrag = vj.bedrag ? Math.round(vj.bedrag / 12) : 0;
-                        return (
-                          <div key={jaar} style={{ borderBottom: "0.5px solid #f0ede8", paddingBottom: 10, marginBottom: 10 }}>
-                            {/* Jaarlabel */}
-                            <div style={{ fontSize: 12, fontWeight: 600, color: COLORS.primary, marginBottom: 6 }}>{jaar}</div>
-                            {/* Rij 1: verzekering */}
-                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 4, alignItems: "center" }}>
-                              <select value={vj.type || ""} onChange={e => updateVerzJaar(jaar, "type", e.target.value)}
-                                style={{ flex: "2 1 130px", fontSize: 13 }}>
-                                {VERZ_TYPEN.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                              </select>
-                              <input type="number" placeholder="Premie/jaar (€)" value={vj.bedrag || ""}
-                                onChange={e => updateVerzJaar(jaar, "bedrag", e.target.value ? Number(e.target.value) : 0)}
-                                style={{ flex: "1 1 110px" }} />
-                              {maandBedrag > 0 && (
-                                <span style={{ fontSize: 12, color: COLORS.success, flexShrink: 0 }}>{fmt(maandBedrag)}/mnd</span>
-                              )}
-                            </div>
-                            {/* Rij 2: pechhulp */}
-                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                              <select value={pj.type || ""} onChange={e => updatePechJaar(jaar, "type", e.target.value)}
-                                style={{ flex: "2 1 130px", fontSize: 13 }}>
-                                {PECH_TYPEN.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                              </select>
-                              <input type="number" placeholder="Pechhulp/jaar (€)" value={pj.bedrag || ""}
-                                onChange={e => updatePechJaar(jaar, "bedrag", e.target.value ? Number(e.target.value) : 0)}
-                                style={{ flex: "1 1 110px" }}
-                                disabled={!pj.type} />
-                              {pj.bedrag > 0 && (
-                                <span style={{ fontSize: 12, color: "#999", flexShrink: 0 }}>{fmt(Math.round(pj.bedrag / 12))}/mnd</span>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
+                    {/* Interne tab-knoppen */}
+                    <div style={{ display: "flex", gap: 0, marginBottom: 14, borderBottom: "1px solid #e8e6e0" }}>
+                      {[["verz", "Autoverzekering"], ["pech", "Pechhulp"]].map(([id, lbl]) => (
+                        <button key={id} onClick={() => setVerzTab(id)} style={{
+                          padding: "7px 16px", fontSize: 13, background: "none", border: "none", cursor: "pointer",
+                          fontWeight: verzTab === id ? 600 : 400,
+                          color: verzTab === id ? COLORS.primary : "#999",
+                          borderBottom: verzTab === id ? `2px solid ${COLORS.primary}` : "2px solid transparent",
+                          marginBottom: -1,
+                        }}>{lbl}</button>
+                      ))}
                     </div>
-                    {verzPosten.length > 0 && (
-                      <div style={{ marginTop: 8, fontSize: 12, color: COLORS.success }}>
-                        ✓ {verzPosten.length} maandposten verzekering · {pechhulpPosten.length} pechhulp-posten toegevoegd aan kostenlijst
+
+                    {/* Tab: Autoverzekering */}
+                    {verzTab === "verz" && (
+                      <div>
+                        <Toggle checked={state.verzekeringAutomatisch} onChange={v => set("verzekeringAutomatisch", v)}
+                          label="Premie automatisch splitsen in maandposten"
+                          sub="Vul per jaar een jaarbedrag in — de app maakt 12 maandposten aan" />
+                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, marginTop: 12 }}>
+                          <thead>
+                            <tr style={{ borderBottom: "0.5px solid #e8e6e0" }}>
+                              <th style={{ textAlign: "left", padding: "5px 8px", fontWeight: 500, color: "#bbb", width: 50 }}>Jaar</th>
+                              <th style={{ textAlign: "left", padding: "5px 8px", fontWeight: 500, color: "#bbb" }}>Type</th>
+                              <th style={{ textAlign: "left", padding: "5px 8px", fontWeight: 500, color: "#bbb", width: 120 }}>Jaarbedrag (€)</th>
+                              <th style={{ textAlign: "left", padding: "5px 8px", fontWeight: 500, color: "#bbb", width: 90 }}>Per maand</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {jarenLijst.map(jaar => {
+                              const vj = verzJarenMap[jaar] || {};
+                              return (
+                                <tr key={jaar} style={{ borderBottom: "0.5px solid #f0ede8" }}>
+                                  <td style={{ padding: "6px 8px", fontWeight: 600 }}>{jaar}</td>
+                                  <td style={{ padding: "6px 4px" }}>
+                                    <select value={vj.type || "allrisk"} onChange={e => updateVerzJaar(jaar, "type", e.target.value)}
+                                      style={{ width: "100%", fontSize: 13 }}>
+                                      {VERZ_TYPEN.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                                    </select>
+                                  </td>
+                                  <td style={{ padding: "6px 4px" }}>
+                                    <input type="number" placeholder="0" value={vj.bedrag || ""}
+                                      onChange={e => updateVerzJaar(jaar, "bedrag", e.target.value ? Number(e.target.value) : 0)}
+                                      style={{ width: "100%" }} />
+                                  </td>
+                                  <td style={{ padding: "6px 8px", color: vj.bedrag > 0 ? COLORS.success : "#bbb", fontWeight: vj.bedrag > 0 ? 500 : 400 }}>
+                                    {vj.bedrag > 0 ? fmt(Math.round(vj.bedrag / 12)) : "—"}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                        {verzPosten.length > 0 && (
+                          <div style={{ marginTop: 8, fontSize: 12, color: COLORS.success }}>
+                            ✓ {verzPosten.length} maandposten toegevoegd aan kostenlijst
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Tab: Pechhulp */}
+                    {verzTab === "pech" && (
+                      <div>
+                        <p style={{ fontSize: 13, color: "#999", marginBottom: 12 }}>
+                          Pechhulp wordt als één jaarpost toegevoegd aan de kostenlijst.
+                        </p>
+                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                          <thead>
+                            <tr style={{ borderBottom: "0.5px solid #e8e6e0" }}>
+                              <th style={{ textAlign: "left", padding: "5px 8px", fontWeight: 500, color: "#bbb", width: 50 }}>Jaar</th>
+                              <th style={{ textAlign: "left", padding: "5px 8px", fontWeight: 500, color: "#bbb" }}>Aanbieder</th>
+                              <th style={{ textAlign: "left", padding: "5px 8px", fontWeight: 500, color: "#bbb", width: 120 }}>Jaarbedrag (€)</th>
+                              <th style={{ textAlign: "left", padding: "5px 8px", fontWeight: 500, color: "#bbb", width: 90 }}>Per maand</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {jarenLijst.map(jaar => {
+                              const pj = pechhulpJarenMap[jaar] || {};
+                              return (
+                                <tr key={jaar} style={{ borderBottom: "0.5px solid #f0ede8" }}>
+                                  <td style={{ padding: "6px 8px", fontWeight: 600 }}>{jaar}</td>
+                                  <td style={{ padding: "6px 4px" }}>
+                                    <select value={pj.type || ""} onChange={e => updatePechJaar(jaar, "type", e.target.value)}
+                                      style={{ width: "100%", fontSize: 13 }}>
+                                      {PECH_TYPEN.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                                    </select>
+                                  </td>
+                                  <td style={{ padding: "6px 4px" }}>
+                                    <input type="number" placeholder="0" value={pj.bedrag || ""}
+                                      onChange={e => updatePechJaar(jaar, "bedrag", e.target.value ? Number(e.target.value) : 0)}
+                                      style={{ width: "100%" }}
+                                      disabled={!pj.type} />
+                                  </td>
+                                  <td style={{ padding: "6px 8px", color: pj.bedrag > 0 ? COLORS.success : "#bbb", fontWeight: pj.bedrag > 0 ? 500 : 400 }}>
+                                    {pj.bedrag > 0 ? fmt(Math.round(pj.bedrag / 12)) : "—"}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                        {pechhulpPosten.length > 0 && (
+                          <div style={{ marginTop: 8, fontSize: 12, color: COLORS.success }}>
+                            ✓ {pechhulpPosten.length} pechhulp-posten toegevoegd aan kostenlijst
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1868,6 +1921,15 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* ══ FOOTER ══ */}
+      <div style={{ marginTop: "3rem", paddingTop: "1rem", borderTop: "0.5px solid #e0ddd8", display: "flex", gap: 16, flexWrap: "wrap", fontSize: 12, color: "#bbb", alignItems: "center" }}>
+        <span>AutoKosten {APP_VERSION}</span>
+        <a href="/AutoKosten/privacy.html" style={{ color: "#1B4F72", textDecoration: "none" }}>Privacy</a>
+        <a href="/AutoKosten/disclaimer.html" style={{ color: "#1B4F72", textDecoration: "none" }}>Disclaimer</a>
+        <a href="/AutoKosten/help.html" style={{ color: "#1B4F72", textDecoration: "none" }}>Help</a>
+        <span style={{ marginLeft: "auto", fontSize: 11 }}>Lokale opslag · geen server · geen cloud</span>
+      </div>
     </div>
   );
 }
