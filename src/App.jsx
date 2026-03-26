@@ -704,6 +704,38 @@ export default function App() {
   // Lease: maandbedrag + belasting op bijtelling - geen vergoedingen
   const leaseMaandNetto     = leasePrive + bijtellingBelasting;
 
+  // Gewogen gemiddeld leasebedrag over alle periodes in de bezitsperiode
+  const leaseGemiddeldOverPeriode = (() => {
+    const totaleMaanden = Math.round(bezitsjaren * 12);
+    const looptijdMnd   = Number(state.leaseLooptijd) || 48;
+    const stijging      = Number(state.leaseStijgingPct || 10) / 100;
+    let totaalBedrag = 0;
+    for (let mnd = 0; mnd < totaleMaanden; mnd++) {
+      const periodeNr  = Math.floor(mnd / looptijdMnd);
+      const maandprijs = Math.round(leasePrive * Math.pow(1 + stijging, periodeNr));
+      totaalBedrag += maandprijs;
+    }
+    return totaleMaanden > 0 ? Math.round(totaalBedrag / totaleMaanden) : leasePrive;
+  })();
+
+  // Lease-periodes tabel voor uitleg
+  const leasePeriodesTabel = (() => {
+    const totaleMaanden = Math.round(bezitsjaren * 12);
+    const looptijdMnd   = Number(state.leaseLooptijd) || 48;
+    const stijging      = Number(state.leaseStijgingPct || 10) / 100;
+    const periodes = [];
+    let mnd = 0;
+    let periodeNr = 0;
+    while (mnd < totaleMaanden) {
+      const maandprijs = Math.round(leasePrive * Math.pow(1 + stijging, periodeNr));
+      const duur = Math.min(looptijdMnd, totaleMaanden - mnd);
+      periodes.push({ nr: periodeNr + 1, maandprijs, duur, totaal: maandprijs * duur });
+      mnd += looptijdMnd;
+      periodeNr++;
+    }
+    return periodes;
+  })();
+
   // Vergelijk netto: verschil per maand
   const verschilNettoMaand  = eigenMaandNetto - leaseMaandNetto;
 
@@ -2165,24 +2197,48 @@ export default function App() {
               style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 1.25rem", cursor: "pointer", userSelect: "none", background: openLeaseUitkomst ? "#fff" : "#fafaf8" }}>
               <span style={{ fontSize: 12, color: openLeaseUitkomst ? COLORS.primary : "#bbb", transform: `rotate(${openLeaseUitkomst ? 90 : 0}deg)`, display: "inline-block", transition: "transform 0.15s" }}>▶</span>
               <span style={{ fontWeight: 500, fontSize: 14, flex: 1 }}>Lease uitkomst (bruto)</span>
-              <span style={{ fontSize: 13, color: "#999" }}>netto: {fmt(leaseMaandNetto)}/mnd</span>
+              <span style={{ fontSize: 13, color: "#999" }}>gem. {fmt(leaseGemiddeldOverPeriode)}/mnd over {bezitsjaren.toFixed(1)} jaar</span>
             </div>
             {openLeaseUitkomst && (
               <div style={{ padding: "0 1.25rem 1.25rem" }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 12 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span style={{ color: "#666", fontSize: 14 }}>Maandbedrag (schatting)</span>
-                    <span style={{ fontWeight: 600, fontSize: 20, color: COLORS.lease }}>{fmt(leasePrive)}</span>
+
+                  {/* Periodes tabel */}
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "#bbb", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
+                      Leaseperiodes over {bezitsjaren.toFixed(1)} jaar bezitsperiode
+                    </div>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                      <thead>
+                        <tr style={{ borderBottom: "0.5px solid #e8e6e0" }}>
+                          <th style={{ textAlign: "left", padding: "4px 8px", fontWeight: 500, color: "#bbb" }}>Periode</th>
+                          <th style={{ textAlign: "left", padding: "4px 8px", fontWeight: 500, color: "#bbb" }}>Duur</th>
+                          <th style={{ textAlign: "right", padding: "4px 8px", fontWeight: 500, color: "#bbb" }}>Per maand</th>
+                          <th style={{ textAlign: "right", padding: "4px 8px", fontWeight: 500, color: "#bbb" }}>Totaal</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {leasePeriodesTabel.map(p => (
+                          <tr key={p.nr} style={{ borderBottom: "0.5px solid #f5f4f0" }}>
+                            <td style={{ padding: "6px 8px", fontWeight: 500 }}>Periode {p.nr}</td>
+                            <td style={{ padding: "6px 8px", color: "#888" }}>{p.duur} mnd</td>
+                            <td style={{ padding: "6px 8px", textAlign: "right", color: COLORS.lease, fontWeight: 500 }}>{fmt(p.maandprijs)}</td>
+                            <td style={{ padding: "6px 8px", textAlign: "right" }}>{fmt(p.totaal)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr style={{ borderTop: "1px solid #e0ddd8" }}>
+                          <td colSpan={2} style={{ padding: "7px 8px", fontWeight: 600 }}>Gewogen gemiddelde</td>
+                          <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 700, color: COLORS.lease, fontSize: 15 }}>{fmt(leaseGemiddeldOverPeriode)}/mnd</td>
+                          <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 600 }}>{fmt(leasePeriodesTabel.reduce((s, p) => s + p.totaal, 0))}</td>
+                        </tr>
+                      </tfoot>
+                    </table>
                   </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                    <span style={{ color: "#999" }}>Totaal over {state.leaseLooptijd} mnd</span>
-                    <span style={{ fontWeight: 500 }}>{fmt(leasePrive * state.leaseLooptijd + state.leaseAanbetaling)}</span>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                    <span style={{ color: "#999" }}>Kosten per km</span>
-                    <span style={{ fontWeight: 500 }}>{fmtC(leaseKmKost)}/km</span>
-                  </div>
-                  <div style={{ borderTop: "0.5px solid #e8e6e0", paddingTop: 10, marginTop: 2 }}>
+
+                  {/* Bijtelling */}
+                  <div style={{ borderTop: "0.5px solid #e8e6e0", paddingTop: 10 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
                       <span style={{ color: "#999" }}>Bijtelling ({state.bijtellingPct}% van {fmt(state.cataloguswaarde)})</span>
                       <span>{fmt(bijtellingMaand)}/mnd</span>
@@ -2191,11 +2247,23 @@ export default function App() {
                       <span style={{ color: "#999" }}>Belasting op bijtelling ({state.belastingschijf}%)</span>
                       <span style={{ color: COLORS.danger }}>+ {fmt(bijtellingBelasting)}/mnd</span>
                     </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, fontWeight: 600 }}>
-                      <span>Lease netto maandlast</span>
-                      <span style={{ color: COLORS.danger }}>{fmt(leaseMaandNetto)}</span>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 2 }}>
+                      <span style={{ color: "#999" }}>Kosten per km</span>
+                      <span style={{ fontWeight: 500 }}>{fmtC(leaseKmKost)}/km</span>
                     </div>
-                    <div style={{ fontSize: 12, color: "#bbb", marginTop: 4 }}>lease + belasting bijtelling, geen vergoedingen</div>
+                  </div>
+
+                  {/* Netto samenvatting */}
+                  <div style={{ background: "#f7f6f2", borderRadius: 8, padding: "10px 14px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
+                      <span style={{ color: "#666" }}>Eerste periode (€{leasePrive}/mnd) + bijtelling</span>
+                      <span style={{ fontWeight: 500, color: COLORS.danger }}>{fmt(leaseMaandNetto)}/mnd</span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, fontWeight: 600 }}>
+                      <span>Gem. over {bezitsjaren.toFixed(1)} jaar + bijtelling</span>
+                      <span style={{ color: COLORS.danger }}>{fmt(leaseGemiddeldOverPeriode + bijtellingBelasting)}/mnd</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: "#bbb", marginTop: 4 }}>lease incl. indexatie + belasting bijtelling, excl. vergoedingen</div>
                   </div>
                 </div>
               </div>
