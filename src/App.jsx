@@ -645,7 +645,7 @@ export default function App() {
         categorie: "brandstof",
         bedrag,
         km: null,
-        omschrijving: `Brandstof ${j} (CBS €${prijs}/l)`,
+        omschrijving: `Brandstof ${j} (CBS €${prijs.toFixed(2).replace(".",",")} /l)`,
         automatisch: true,
         type: "brandstof",
       });
@@ -1033,7 +1033,7 @@ export default function App() {
                             const prijzenPerJaar = {};
                             for (const [yr, vals] of Object.entries(perJaar)) {
                               const gem = vals.reduce((s, v) => s + v, 0) / vals.length;
-                              prijzenPerJaar[yr] = parseFloat((gem / 100).toFixed(3));
+                              prijzenPerJaar[yr] = parseFloat(gem.toFixed(3));
                             }
                             set("brandstofPrijzenPerJaar", prijzenPerJaar);
                           } catch {}
@@ -1079,7 +1079,7 @@ export default function App() {
                                     <td style={{ padding: "6px 8px", fontWeight: 600 }}>{jr}</td>
                                     <td style={{ padding: "6px 8px" }}>
                                       {cbsPrijs
-                                        ? <span style={{ color: COLORS.primary }}>€{cbsPrijs.toFixed(3)}</span>
+                                        ? <span style={{ color: COLORS.primary }}>€{cbsPrijs.toFixed(2).replace(".",",")}</span>
                                         : <span style={{ color: "#ccc", fontSize: 11 }}>— ophalen</span>}
                                     </td>
                                     <td style={{ padding: "6px 8px", fontWeight: kosten ? 500 : 400, color: kosten ? "#1a1a1a" : "#ccc" }}>
