@@ -1,4 +1,4 @@
-// AutoKosten v2 fix36
+// AutoKosten v2 fix37
 // Multi-auto: meerdere auto-profielen, switchen via header
 
 import { useState, useEffect } from "react";
@@ -7,7 +7,7 @@ import {
   Tooltip, Legend, ResponsiveContainer, ReferenceLine, PieChart, Pie, Cell
 } from "recharts";
 
-const APP_VERSION = "v2 fix36";
+const APP_VERSION = "v2 fix37";
 const STORAGE_KEY = "autokosten_v3_multi";
 
 const COLORS = {
@@ -540,6 +540,7 @@ export default function App() {
   const [openJaren, setOpenJaren]   = useState(() => new Set([String(new Date().getFullYear())]));
   const [analyseJaar, setAnalyseJaar] = useState("tot_nu");
   const [vergPeriodeStart, setVergPeriodeStart] = useState("tot_nu");
+  const vergModus = vergPeriodeStart === "__lastjaar" ? "__lastjaar" : vergPeriodeStart === "__gem5" ? "__gem5" : vergPeriodeStart === "tot_nu" ? "tot_nu" : "handmatig";
   const [samPeriode, setSamPeriode] = useState("gem_aankoop");
   const [perMaand, setPerMaand] = useState(true);
   const [openSec, setOpenSec] = useState({ kosten: false, vergoed: false });
@@ -2354,12 +2355,6 @@ export default function App() {
 
             // ── Basis voor eigen auto kosten ──
             // Drie modi: laatste jaar, gemiddelde 5 jaar, handmatig startdatum
-            const vergModus = vergPeriodeStart === "__lastjaar" ? "__lastjaar"
-              : vergPeriodeStart === "__gem5"     ? "__gem5"
-              : vergPeriodeStart === "tot_nu"     ? "tot_nu"
-              : "handmatig";
-
-            // Bereken gemiddelde maandkosten eigen auto op basis van modus
             const berekenEigenMaandKosten = () => {
               if (vergModus === "__lastjaar") {
                 const vorigjaar = String(nuJaar - 1);
