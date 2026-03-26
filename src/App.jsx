@@ -1,4 +1,4 @@
-// AutoKosten v2 fix40
+// AutoKosten v2 fix41
 // Multi-auto: meerdere auto-profielen, switchen via header
 
 import { useState, useEffect } from "react";
@@ -7,7 +7,7 @@ import {
   Tooltip, Legend, ResponsiveContainer, ReferenceLine, PieChart, Pie, Cell
 } from "recharts";
 
-const APP_VERSION = "v2 fix40";
+const APP_VERSION = "v2 fix41";
 const STORAGE_KEY = "autokosten_v3_multi";
 
 const COLORS = {
@@ -665,15 +665,17 @@ export default function App() {
   const latestKmStand = alleKosten.filter(k => k.km && Number(k.km) > 0).reduce((max, k) => Math.max(max, Number(k.km)), 0);
 
   const totaalKosten   = alleKosten.reduce((s, k) => s + Number(k.bedrag), 0);
+  const kostenTotNu    = alleKosten.filter(k => !k.datum || k.datum <= nu.toISOString().slice(0,10)).reduce((s, k) => s + Number(k.bedrag), 0);
   const totaleAfschr   = state.aankoopprijs - state.verwachtVerkoopprijs;
   const afschrJaar     = totaleAfschr / bezitsjaren;
   const variabelTotaal = alleKosten.filter(k => COST_CATEGORIES.find(c => c.id === k.categorie)?.variabel).reduce((s, k) => s + Number(k.bedrag), 0);
   const vastTotaal     = totaalKosten - variabelTotaal;
+  const afschrTotNu    = afschrJaar * verlopenJaren;
   const kmVast         = (vastTotaal + totaleAfschr) / geredenKm;
   const variabelFractie = totaalKosten > 0 ? variabelTotaal / totaalKosten : 0.25;
   const kmVariabel     = variabelTotaal / geredenKm;
-  const kmTotaal       = (totaalKosten + totaleAfschr) / geredenKm;
-  const eigenMaand     = (totaalKosten + afschrJaar) / Math.max(verlopenJaren * 12, 1);
+  const kmTotaal       = (kostenTotNu + afschrTotNu) / geredenKm;
+  const eigenMaand     = (kostenTotNu + afschrTotNu) / Math.max(verlopenJaren * 12, 1);
 
   const leasePriveBerekend = berekenLeasePrive(state.cataloguswaarde, state.leaseLooptijd, state.leaseKm, state.leaseAanbetaling);
   const leasePrive     = state.leaseBedragHandmatig ? Number(state.leaseBedragHandmatig) : leasePriveBerekend;
@@ -893,10 +895,10 @@ export default function App() {
           {state.bouwjaar && <div style={{ fontSize: 13, color: "#999", marginTop: 2 }}>{state.bouwjaar} · {state.brandstof} · {state.kenteken}{state.gewichtKg ? ` · ${fmtN(state.gewichtKg)} kg` : ""}{(state.huidigeKmStand || latestKmStand) ? ` · ${fmtN(state.huidigeKmStand || latestKmStand)} km` : ""}</div>}
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", width: "100%" }}>
-          <MetricCard label="Totaalkosten"  value={fmt(totaalKosten + totaleAfschr)} sub="incl. afschrijving · alle posten" />
-          <MetricCard label="Per maand"     value={fmt(eigenMaand)}  sub="incl. afschr." color={COLORS.accent} />
+          <MetricCard label="Totaalkosten"  value={fmt(kostenTotNu + afschrTotNu)} sub="t/m nu · incl. afschrijving" />
+          <MetricCard label="Per maand"     value={fmt(eigenMaand)}  sub="t/m nu · incl. afschr." color={COLORS.accent} />
           <MetricCard label="Per km"        value={fmtC(kmTotaal)}
-            sub={`alle posten ÷ ${fmtN(Math.round(geredenKm))} km (${verlopenJaren.toFixed(1)} jr × ${fmtN(state.jaarlijkseKm)} km/jr)`}
+            sub={`t/m nu ÷ ${fmtN(Math.round(geredenKm))} km (${verlopenJaren.toFixed(1)} jr × ${fmtN(state.jaarlijkseKm)} km/jr)`}
             color={COLORS.primary} />
         </div>
       </div>
