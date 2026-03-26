@@ -4,7 +4,7 @@
 import { useState, useEffect } from "react";
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, Legend, ResponsiveContainer, ReferenceLine
+  Tooltip, Legend, ResponsiveContainer, ReferenceLine, PieChart, Pie, Cell
 } from "recharts";
 
 const APP_VERSION = "v2 fix16";
@@ -26,6 +26,61 @@ const COST_CATEGORIES = [
   { id: "wassen",         label: "Wassen & poetsen",     variabel: false, icon: "💧" },
   { id: "overig",         label: "Overig",               variabel: false, icon: "📦" },
 ];
+
+// ─── Referentiekosten per segment en leeftijdsklasse ────────────────────────
+// Gebaseerd op ANWB-richtlijnen en branchegemiddelden (2024, excl. brandstof en MRB)
+// Bedragen zijn jaarlijkse kosten in euro's
+const REF_SEGMENTEN = [
+  { id: "klein",    label: "Klein (A/B)",       voorbeeld: "Polo, Yaris, 208",   catalogusMax: 22000 },
+  { id: "compact",  label: "Compact (C)",        voorbeeld: "Golf, Focus, 308",   catalogusMax: 35000 },
+  { id: "midden",   label: "Middenklasse (D)",   voorbeeld: "Passat, Mondeo",     catalogusMax: 50000 },
+  { id: "suv",      label: "SUV / Crossover",    voorbeeld: "Tiguan, CR-V, 3008", catalogusMax: 60000 },
+  { id: "premium",  label: "Premium (E+)",       voorbeeld: "BMW 5, Audi A6",     catalogusMax: 999999 },
+];
+
+// Referentie: [onderhoud, reparatie, banden, wassen] per jaar
+// Per leeftijdsklasse: 0-3jr, 3-6jr, 6-10jr, 10+jr
+const REF_KOSTEN = {
+  //                0-3jr   3-6jr   6-10jr  10+jr
+  klein:   { onderhoud: [450,  600,  750,  950],  reparatie: [100,  250,  500,  800],  banden: [180, 200, 220, 240], wassen: [120,120,120,120] },
+  compact: { onderhoud: [550,  750,  950, 1200],  reparatie: [120,  300,  650, 1100],  banden: [220, 250, 270, 290], wassen: [150,150,150,150] },
+  midden:  { onderhoud: [700,  950, 1200, 1500],  reparatie: [150,  400,  800, 1300],  banden: [280, 310, 330, 360], wassen: [180,180,180,180] },
+  suv:     { onderhoud: [800, 1050, 1350, 1700],  reparatie: [180,  450,  900, 1400],  banden: [350, 380, 400, 430], wassen: [180,180,180,180] },
+  premium: { onderhoud: [1200,1600, 2000, 2600],  reparatie: [300,  700, 1400, 2200],  banden: [450, 500, 550, 600], wassen: [200,200,200,200] },
+};
+
+function bepaalSegment(cataloguswaarde, merk) {
+  const cat = Number(cataloguswaarde) || 0;
+  const m   = (merk || "").toLowerCase();
+  // Premium merken
+  if (["bmw","audi","mercedes","lexus","volvo","porsche","jaguar","land rover","maserati"].some(p => m.includes(p))) {
+    return cat < 40000 ? "midden" : "premium";
+  }
+  for (const seg of REF_SEGMENTEN) {
+    if (cat <= seg.catalogusMax) return seg.id;
+  }
+  return "compact";
+}
+
+function getLeeftijdsIndex(bouwjaar) {
+  const leeftijd = new Date().getFullYear() - Number(bouwjaar || new Date().getFullYear());
+  if (leeftijd < 3)  return 0;
+  if (leeftijd < 6)  return 1;
+  if (leeftijd < 10) return 2;
+  return 3;
+}
+
+function berekenReferentieKosten(segment, bouwjaar) {
+  const ref = REF_KOSTEN[segment] || REF_KOSTEN.compact;
+  const idx = getLeeftijdsIndex(bouwjaar);
+  return {
+    onderhoud: ref.onderhoud[idx],
+    reparatie: ref.reparatie[idx],
+    banden:    ref.banden[idx],
+    wassen:    ref.wassen[idx],
+    totaal:    ref.onderhoud[idx] + ref.reparatie[idx] + ref.banden[idx] + ref.wassen[idx],
+  };
+}
 
 const MRB_OPCENTEN = {
   "groningen": 105.7, "friesland": 77.8, "drenthe": 83.2, "overijssel": 103.3,
@@ -150,13 +205,21 @@ function defaultState() {
     verwachteVerkoopdatum: "2027-01-01", verwachtVerkoopprijs: 12000,
     jaarlijkseKm: 15000, cataloguswaarde: 30000,
     leaseLooptijd: 48, leaseKm: 15000, leaseAanbetaling: 0,
+    leaseStijgingPct: 10,
+    gemiddeldVerbruik: "",
+    tankLiter: null,
+    kmPerTank: null,
+    brandstofPrijs: "",
+    brandstofJaarBedrag: null,
+    brandstofAutomatisch: false,
+    brandstofPrijzenPerJaar: {},
+    cbsLaden: false,
     mrbAutomatisch: false,
     mrbWerkelijkMaand: "",
     verzekeringAutomatisch: false,
     verzekeringType: "allrisk",
     verzekeringJaren: [],
-    pechhulpType: "",
-    pechhulpJaar: null,
+    pechhulpJaren: [],
     huidigeKmStand: null,
     mobiliteitBrutoMaand: "",
     kmVergTarief: "0.23",
@@ -267,47 +330,73 @@ function CatGroep({ catId, posten, editId, setEditId, onSave, onVerwijder }) {
   const auto   = posten.filter(k => k.automatisch).length;
   return (
     <div>
-      {/* Categorie-header */}
-      <div
-        onClick={() => setOpen(o => !o)}
-        style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 12px 7px 28px", background: "#fafaf8", borderBottom: "0.5px solid #f0ede8", cursor: "pointer", userSelect: "none" }}
-      >
+      <div onClick={() => setOpen(o => !o)}
+        style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 12px 7px 28px", background: "#fafaf8", borderBottom: "0.5px solid #f0ede8", cursor: "pointer", userSelect: "none" }}>
         <span style={{ fontSize: 11, color: open ? COLORS.accent : "#bbb", transform: `rotate(${open ? 90 : 0}deg)`, display: "inline-block", transition: "transform 0.15s", width: 10 }}>▶</span>
         <span style={{ fontSize: 13 }}>{cat?.icon} {cat?.label || catId}</span>
         <span style={{ fontSize: 11, color: "#bbb" }}>{posten.length} posten{auto > 0 ? ` (${auto} auto)` : ""}</span>
         <span style={{ marginLeft: "auto", fontWeight: 500, fontSize: 13 }}>{fmt(totaal)}</span>
       </div>
-      {/* Posten binnen categorie */}
       {open && posten.map(k => {
         if (editId === k.id) {
           return (
-            <table key={k.id} style={{ width: "100%", borderCollapse: "collapse" }}>
-              <tbody><EditRij kost={k} onSave={onSave} onCancel={() => setEditId(null)} /></tbody>
-            </table>
+            <div key={k.id} style={{ padding: "8px 12px 8px 28px", borderBottom: "0.5px solid #f5f4f0", background: "#fffbf5" }}>
+              <EditRijInline kost={k} onSave={onSave} onCancel={() => setEditId(null)} />
+            </div>
           );
         }
         return (
-          <div key={k.id} style={{ display: "flex", alignItems: "center", gap: 0, padding: "6px 12px 6px 52px", borderBottom: "0.5px solid #f5f4f0", background: k.automatisch ? "#f9fdf9" : "#fff", fontSize: 13 }}>
-            <span style={{ color: "#aaa", width: 100, flexShrink: 0 }}>{k.datum}</span>
-            <span style={{ fontWeight: 500, width: 80, flexShrink: 0 }}>{fmt(k.bedrag)}</span>
-            <span style={{ color: "#bbb", width: 80, flexShrink: 0 }}>{k.km ? fmtN(k.km) : "—"}</span>
-            <span style={{ color: "#999", flex: 1 }}>
-              {k.omschrijving || "—"}
-              {k.automatisch && <span style={{ marginLeft: 6, fontSize: 11, color: COLORS.success, background: "#e8f8ef", borderRadius: 3, padding: "1px 5px" }}>auto</span>}
-            </span>
-            <span style={{ flexShrink: 0, width: 52, textAlign: "right" }}>
-              {!k.automatisch && (
-                <>
-                  <button onClick={() => setEditId(k.id)} title="Bewerken"
-                    style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.primary, fontSize: 13, marginRight: 2 }}>✏</button>
-                  <button onClick={() => onVerwijder(k.id)} title="Verwijderen"
-                    style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.danger, fontSize: 13 }}>✕</button>
-                </>
-              )}
-            </span>
+          <div key={k.id} style={{ padding: "6px 12px 6px 28px", borderBottom: "0.5px solid #f5f4f0", background: k.automatisch ? "#f9fdf9" : "#fff" }}>
+            {/* Regel 1: datum + bedrag + acties */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 12, color: "#aaa", flexShrink: 0 }}>{k.datum}</span>
+              <span style={{ fontWeight: 600, fontSize: 13, flexShrink: 0 }}>{fmt(k.bedrag)}</span>
+              {k.km && <span style={{ fontSize: 12, color: "#bbb", flexShrink: 0 }}>{fmtN(k.km)} km</span>}
+              {k.automatisch && <span style={{ fontSize: 11, color: COLORS.success, background: "#e8f8ef", borderRadius: 3, padding: "1px 5px" }}>auto</span>}
+              <span style={{ marginLeft: "auto", flexShrink: 0 }}>
+                {!k.automatisch && (
+                  <>
+                    <button onClick={() => setEditId(k.id)} title="Bewerken"
+                      style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.primary, fontSize: 15, padding: "2px 4px" }}>✏</button>
+                    <button onClick={() => onVerwijder(k.id)} title="Verwijderen"
+                      style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.danger, fontSize: 15, padding: "2px 4px" }}>✕</button>
+                  </>
+                )}
+              </span>
+            </div>
+            {/* Regel 2: omschrijving (alleen als aanwezig) */}
+            {k.omschrijving && (
+              <div style={{ fontSize: 12, color: "#999", marginTop: 1, paddingLeft: 0 }}>{k.omschrijving}</div>
+            )}
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// Inline edit als gestapeld formulier (mobiel-vriendelijk)
+function EditRijInline({ kost, onSave, onCancel }) {
+  const [e, setE] = useState({ ...kost, bedrag: String(kost.bedrag), km: kost.km ? String(kost.km) : "" });
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <input type="date" value={e.datum} onChange={x => setE(p => ({ ...p, datum: x.target.value }))} style={{ flex: "1 1 130px" }} />
+        <input type="number" placeholder="Bedrag" value={e.bedrag} onChange={x => setE(p => ({ ...p, bedrag: x.target.value }))} style={{ flex: "1 1 80px" }} />
+        <input type="number" placeholder="Km" value={e.km} onChange={x => setE(p => ({ ...p, km: x.target.value }))} style={{ flex: "1 1 80px" }} />
+      </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <select value={e.categorie} onChange={x => setE(p => ({ ...p, categorie: x.target.value }))} style={{ flex: "1 1 150px" }}>
+          {COST_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.icon} {c.label}</option>)}
+        </select>
+        <input placeholder="Omschrijving" value={e.omschrijving} onChange={x => setE(p => ({ ...p, omschrijving: x.target.value }))} style={{ flex: "2 1 150px" }} />
+      </div>
+      <div style={{ display: "flex", gap: 6 }}>
+        <button onClick={() => onSave({ ...e, bedrag: Number(e.bedrag), km: e.km ? Number(e.km) : null })}
+          style={{ background: COLORS.success, color: "#fff", border: "none", borderRadius: 5, padding: "7px 14px", cursor: "pointer", fontSize: 13, fontWeight: 500 }}>✓ Opslaan</button>
+        <button onClick={onCancel}
+          style={{ background: "none", border: "0.5px solid #ccc", borderRadius: 5, padding: "7px 12px", cursor: "pointer", fontSize: 13 }}>Annuleren</button>
+      </div>
     </div>
   );
 }
@@ -448,12 +537,16 @@ export default function App() {
   const [editId, setEditId]         = useState(null);
   const [openJaren, setOpenJaren]   = useState(() => new Set([String(new Date().getFullYear())]));
   const [analyseJaar, setAnalyseJaar] = useState("tot_nu");
-  const [vergPeriodeStart, setVergPeriodeStart] = useState(() => new Date().toISOString().slice(0,10));
+  const [vergPeriodeStart, setVergPeriodeStart] = useState("tot_nu");
   const [samPeriode, setSamPeriode] = useState("gem_aankoop");
   const [perMaand, setPerMaand] = useState(true);
   const [openSec, setOpenSec] = useState({ kosten: false, vergoed: false });
   const [showNieuwKost, setShowNieuwKost] = useState(false);
-  const [openBlokken, setOpenBlokken] = useState({ rdw: false, voertuig: false, mrb: false, verzekering: false, vergoedingen: false });
+  const [verzTab, setVerzTab] = useState("verz");
+  const [openVerg, setOpenVerg] = useState(false);
+  const [openLeaseParams, setOpenLeaseParams] = useState(false);
+  const [openLeaseUitkomst, setOpenLeaseUitkomst] = useState(false);
+  const [openBlokken, setOpenBlokken] = useState({ rdw: false, voertuig: false, brandstof: false, mrb: false, verzekering: false, vergoedingen: false });
   const [importText, setImportText] = useState("");
   const [importError, setImportError] = useState("");
   const [saveFlash, setSaveFlash]   = useState(false);
@@ -513,30 +606,59 @@ export default function App() {
     ? genereerVerzekeringPosten(state.aankoopdatum, state.verwachteVerkoopdatum, state.verzekeringJaren)
     : [];
 
-  // Pechhulp: één post per jaar automatisch genereren
+  // Pechhulp: per jaar opgegeven via pechhulpJaren array
   const pechhulpPosten = (() => {
-    if (!state.pechhulpType || !state.pechhulpJaar || state.pechhulpJaar <= 0) return [];
+    if (!state.pechhulpJaren?.length) return [];
+    const einde = new Date(state.verwachteVerkoopdatum);
+    const start = new Date(state.aankoopdatum);
+    return state.pechhulpJaren.flatMap(pj => {
+      if (!pj.type || !pj.bedrag || pj.bedrag <= 0) return [];
+      const d = new Date(pj.startJaar, start.getMonth(), 1);
+      if (d < start || d > einde) return [];
+      return [{
+        id: `pech_${pj.startJaar}`,
+        datum: d.toISOString().slice(0,10),
+        categorie: "verzekering",
+        bedrag: pj.bedrag,
+        km: null,
+        omschrijving: `Pechhulp ${pj.type.includes("anwb") ? "ANWB" : pj.type} ${pj.startJaar}`,
+        automatisch: true,
+        type: "pechhulp",
+      }];
+    });
+  })();
+
+  // Brandstof: automatische jaarposten met per-jaar CBS-prijs
+  const brandstofPosten = (() => {
+    if (!state.brandstofAutomatisch) return [];
+    const verbruikKml = Number(state.gemiddeldVerbruik) || 0;
+    const kmJr        = Number(state.jaarlijkseKm) || 0;
+    if (verbruikKml <= 0 || kmJr <= 0) return [];
+    const cbsPrijzen = state.brandstofPrijzenPerJaar || {};
     const start = new Date(state.aankoopdatum);
     const einde = new Date(state.verwachteVerkoopdatum);
     const posten = [];
+    const bf3      = (state.brandstof || "").toLowerCase();
+    const bfLabel  = bf3.includes("elektr") ? "Stroom" : bf3.includes("diesel") ? "Diesel" : bf3.includes("lpg") ? "LPG" : "Benzine";
     for (let j = start.getFullYear(); j <= einde.getFullYear(); j++) {
-      const d = new Date(j, start.getMonth(), 1);
-      if (d < start || d > einde) continue;
+      const prijs = cbsPrijzen[j];
+      if (!prijs) continue;
+      const bedrag = Math.round(kmJr / verbruikKml * prijs);
       posten.push({
-        id: `pech_${j}`,
-        datum: d.toISOString().slice(0,10),
-        categorie: "verzekering",
-        bedrag: state.pechhulpJaar,
+        id: `brandstof_${j}`,
+        datum: `${j}-01-01`,
+        categorie: "brandstof",
+        bedrag,
         km: null,
-        omschrijving: `Pechhulp ${state.pechhulpType.includes("anwb") ? "ANWB" : "pechhulp"} ${j}`,
+        omschrijving: `${bfLabel} ${j} (CBS €${prijs.toFixed(2).replace(".",",")} /l)`,
         automatisch: true,
-        type: "pechhulp",
+        type: "brandstof",
       });
     }
     return posten;
   })();
 
-  const alleKosten = [...state.kosten, ...mrbPosten, ...verzPosten, ...pechhulpPosten];
+  const alleKosten = [...state.kosten, ...mrbPosten, ...verzPosten, ...pechhulpPosten, ...brandstofPosten];
   const latestKmStand = alleKosten.filter(k => k.km && Number(k.km) > 0).reduce((max, k) => Math.max(max, Number(k.km)), 0);
 
   const totaalKosten   = alleKosten.reduce((s, k) => s + Number(k.bedrag), 0);
@@ -596,19 +718,46 @@ export default function App() {
   // Sorteer posten binnen elk jaar op datum (nieuwste eerst)
   jarenGesorteerd.forEach(j => groepenPerJaar[j].sort((a,b) => (b.datum||"").localeCompare(a.datum||"")));
 
-  // Grafiekdata
+  // Grafiekdata — inclusief zakelijk lease met inflatie per looptijdperiode
   const kostenPerJaar = {};
   alleKosten.forEach(k => { const j = k.datum?.slice(0,4); if (j) kostenPerJaar[j] = (kostenPerJaar[j]||0)+Number(k.bedrag); });
   const aankoopJaar = aankoopDt.getFullYear();
   const verkoopJaar = verkoopDt.getFullYear();
-  let cumEigen = state.aankoopprijs, cumLease = state.leaseAanbetaling;
+  const leaseStijging = Number(state.leaseStijgingPct || 10) / 100;
+  const looptijdJr    = (Number(state.leaseLooptijd) || 48) / 12;
+
+  let cumEigen = state.aankoopprijs;
+  let cumLeasePriv = state.leaseAanbetaling;
+  let cumLeaseZak  = state.leaseAanbetaling;
   const grafiekData = [];
   for (let j = aankoopJaar; j <= verkoopJaar; j++) {
-    cumEigen += (kostenPerJaar[String(j)] || 0) + afschrJaar;
-    cumLease += leasePrive * 12;
-    grafiekData.push({ jaar: String(j), "Eigen auto": Math.round(cumEigen), "Privé lease": Math.round(cumLease) });
+    const periodeNr    = Math.floor((j - aankoopJaar) / looptijdJr);  // 0, 1, 2 …
+    const leasePrivPeriode = Math.round(leasePrive * Math.pow(1 + leaseStijging, periodeNr));
+    const leaseZakPeriode  = Math.round((leasePrive + bijtellingBelasting) * Math.pow(1 + leaseStijging, periodeNr));
+    cumEigen     += (kostenPerJaar[String(j)] || 0) + afschrJaar;
+    cumLeasePriv += leasePrivPeriode * 12;
+    cumLeaseZak  += leaseZakPeriode  * 12;
+    grafiekData.push({
+      jaar: String(j),
+      "Eigen auto":      Math.round(cumEigen),
+      "Privé lease":     Math.round(cumLeasePriv),
+      "Zakelijk lease":  Math.round(cumLeaseZak),
+    });
   }
-  const jaarBarData = Object.entries(kostenPerJaar).sort().map(([jaar, kosten]) => ({ jaar, kosten }));
+  // jaarBarData: per jaar vast + variabel gesplitst
+  const jaarBarData = (() => {
+    const jaren = Object.keys(kostenPerJaar).sort();
+    return jaren.map(jaar => {
+      const posten = alleKosten.filter(k => k.datum?.slice(0,4) === jaar);
+      const variabel = posten.filter(k => COST_CATEGORIES.find(c => c.id === k.categorie)?.variabel)
+        .reduce((s, k) => s + Number(k.bedrag), 0);
+      const vast = posten.reduce((s, k) => s + Number(k.bedrag), 0) - variabel;
+      return { jaar, vast: Math.round(vast), variabel: Math.round(variabel), totaal: Math.round(vast + variabel) };
+    });
+  })();
+  const jaarBarGemiddelde = jaarBarData.length > 0
+    ? Math.round(jaarBarData.reduce((s, d) => s + d.totaal, 0) / jaarBarData.length)
+    : 0;
   const afschrData  = afschrijvingsCurve(state.aankoopprijs, state.verwachtVerkoopprijs, bezitsjaren);
   const kostPerCat  = COST_CATEGORIES
     .map(c => ({ ...c, totaal: alleKosten.filter(k => k.categorie === c.id).reduce((s, k) => s + Number(k.bedrag), 0) }))
@@ -756,34 +905,287 @@ export default function App() {
               key: "voertuig", titel: "Voertuig & financieel",
               inhoud: (
                 <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
-                  <div style={{ flex: 1, minWidth: 220 }}>
+                  <div style={{ flex: "1 1 220px" }}>
                     <div style={{ fontSize: 12, color: "#bbb", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Voertuig</div>
-                    {[["Merk","merk"],["Model","model"],["Bouwjaar","bouwjaar"],["Brandstof","brandstof"]].map(([lbl,key]) => (
-                      <Row key={key} label={lbl}><input value={state[key]} onChange={e => set(key, e.target.value)} style={{ flex: 1 }} /></Row>
+                    {[["Merk","merk"],["Model","model"],["Bouwjaar","bouwjaar"]].map(([lbl,key]) => (
+                      <div key={key} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                        <label style={{ fontSize: 13, color: "#666", width: 90, flexShrink: 0 }}>{lbl}</label>
+                        <input value={state[key]} onChange={e => set(key, e.target.value)} style={{ flex: 1, minWidth: 0 }} />
+                      </div>
                     ))}
-                    <Row label="Gewicht (kg)"><input type="number" value={state.gewichtKg} onChange={e => set("gewichtKg", e.target.value)} style={{ flex: 1 }} /></Row>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                      <label style={{ fontSize: 13, color: "#666", width: 90, flexShrink: 0 }}>Brandstof</label>
+                      <select value={state.brandstof} onChange={e => set("brandstof", e.target.value)} style={{ flex: 1, minWidth: 0 }}>
+                        <option value="">— kies type</option>
+                        <option value="Benzine">Benzine</option>
+                        <option value="Diesel">Diesel</option>
+                        <option value="LPG">LPG</option>
+                        <option value="Elektriciteit">Elektriciteit</option>
+                        <option value="Hybride (Benzine/Elektrisch)">Hybride (benzine/elektrisch)</option>
+                        <option value="Hybride (Diesel/Elektrisch)">Hybride (diesel/elektrisch)</option>
+                        <option value="Waterstof">Waterstof</option>
+                      </select>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                      <label style={{ fontSize: 13, color: "#666", width: 90, flexShrink: 0 }}>Gewicht (kg)</label>
+                      <input type="number" value={state.gewichtKg} onChange={e => set("gewichtKg", e.target.value)} style={{ flex: 1, minWidth: 0 }} />
+                    </div>
                   </div>
-                  <div style={{ flex: 1, minWidth: 220 }}>
+                  <div style={{ flex: "1 1 220px" }}>
                     <div style={{ fontSize: 12, color: "#bbb", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Financieel</div>
-                    <Row label="Aankoopprijs"><input type="number" value={state.aankoopprijs} onChange={e => set("aankoopprijs", Number(e.target.value))} style={{ flex: 1 }} /></Row>
-                    <Row label="Aankoopdatum"><input type="date" value={state.aankoopdatum} onChange={e => set("aankoopdatum", e.target.value)} style={{ flex: 1 }} /></Row>
-                    <Row label="Verwacht weg"><input type="date" value={state.verwachteVerkoopdatum} onChange={e => set("verwachteVerkoopdatum", e.target.value)} style={{ flex: 1 }} /></Row>
-                    <Row label="Verkoopprijs"><input type="number" value={state.verwachtVerkoopprijs} onChange={e => set("verwachtVerkoopprijs", Number(e.target.value))} style={{ flex: 1 }} /></Row>
-                    <Row label="Km per jaar"><input type="number" value={state.jaarlijkseKm} onChange={e => set("jaarlijkseKm", Number(e.target.value))} style={{ flex: 1 }} /></Row>
-                    <Row label="Huidige km-stand">
+                    {[
+                      ["Aankoopprijs", "aankoopprijs", "number"],
+                      ["Aankoopdatum", "aankoopdatum", "date"],
+                      ["Verwacht weg",  "verwachteVerkoopdatum", "date"],
+                      ["Verkoopprijs",  "verwachtVerkoopprijs", "number"],
+                      ["Km per jaar",   "jaarlijkseKm", "number"],
+                    ].map(([lbl, key, type]) => (
+                      <div key={key} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                        <label style={{ fontSize: 13, color: "#666", width: 90, flexShrink: 0 }}>{lbl}</label>
+                        <input type={type}
+                          value={type === "number" ? (state[key] ?? "") : (state[key] || "")}
+                          onChange={e => set(key, type === "number" ? Number(e.target.value) : e.target.value)}
+                          style={{ flex: 1, minWidth: 0 }} />
+                      </div>
+                    ))}
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <label style={{ fontSize: 13, color: "#666", width: 90, flexShrink: 0 }}>Km-stand</label>
                       <input type="number" value={state.huidigeKmStand ?? latestKmStand ?? ""}
                         onChange={e => set("huidigeKmStand", e.target.value ? Number(e.target.value) : null)}
-                        placeholder={latestKmStand ? fmtN(latestKmStand) : "optioneel"} style={{ flex: 1 }} />
+                        placeholder={latestKmStand ? fmtN(latestKmStand) : "optioneel"} style={{ flex: 1, minWidth: 0 }} />
                       {latestKmStand > 0 && (
                         <button onClick={() => set("huidigeKmStand", latestKmStand)}
-                          style={{ fontSize: 11, background: "none", border: "0.5px solid #e0ddd8", borderRadius: 4, padding: "4px 8px", cursor: "pointer", color: "#999", whiteSpace: "nowrap" }}>
+                          style={{ fontSize: 11, background: "none", border: "0.5px solid #e0ddd8", borderRadius: 4, padding: "4px 6px", cursor: "pointer", color: "#999", whiteSpace: "nowrap", flexShrink: 0 }}>
                           ← {fmtN(latestKmStand)}
                         </button>
                       )}
-                    </Row>
+                    </div>
                   </div>
                 </div>
               ),
+            },
+            {
+              key: "brandstof", titel: (() => {
+                const bf = (state.brandstof || "").toLowerCase();
+                if (bf.includes("elektr")) return "⚡ Energieverbruik & laadkosten";
+                if (bf.includes("hybride") || bf.includes("plug")) return "⛽ Brandstof & laadkosten";
+                return "⛽ Brandstofverbruik & kosten";
+              })(),
+              inhoud: (() => {
+                const bf = (state.brandstof || "").toLowerCase();
+                const isElektrisch = bf.includes("elektr");
+                const isHybride    = bf.includes("hybride") || bf.includes("plug");
+                const kmJaar = Number(state.jaarlijkseKm) || 0;
+
+                // Berekende jaarkosten brandstof
+                const verbruik = Number(state.gemiddeldVerbruik) || 0;
+                const prijs    = Number(state.brandstofPrijs) || 0;
+                const berekendeKosten = verbruik > 0 && prijs > 0 && kmJaar > 0
+                  ? Math.round(kmJaar / verbruik * prijs) : 0;
+                const jaarKosten = state.brandstofJaarBedrag || berekendeKosten;
+
+                // Automatische post info
+                const heeftAutoPost = jaarKosten > 0 && state.brandstofAutomatisch;
+
+                return (
+                  <div>
+                    {/* Verbruik */}
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "#bbb", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>
+                      Verbruik
+                    </div>
+
+                    {isElektrisch ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                        <label style={{ fontSize: 13, color: "#666", width: 120, flexShrink: 0 }}>km per kWh</label>
+                        <input type="number" step="0.1" placeholder="bijv. 6.5"
+                          value={state.gemiddeldVerbruik}
+                          onChange={e => set("gemiddeldVerbruik", e.target.value)}
+                          style={{ flex: 1, minWidth: 0 }} />
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                        <label style={{ fontSize: 13, color: "#666", width: 120, flexShrink: 0 }}>km per liter</label>
+                        <input type="number" step="0.1" placeholder="bijv. 20"
+                          value={state.gemiddeldVerbruik}
+                          onChange={e => set("gemiddeldVerbruik", e.target.value)}
+                          style={{ flex: 1, minWidth: 0 }} />
+                      </div>
+                    )}
+
+                    {/* Prijzen per jaar */}
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "#bbb", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8, marginTop: 10, borderTop: "0.5px solid #f0ede8", paddingTop: 12 }}>
+                      {isElektrisch ? "Stroomprijs per jaar" : "Brandstofprijs per jaar (niet-snelweg)"}
+                    </div>
+
+                    {/* Ophaal knop */}
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
+                      {/* Toon herkend brandstoftype */}
+                      {(() => {
+                        const bf2 = (state.brandstof || "").toLowerCase();
+                        const isElek  = bf2.includes("elektr") || bf2.includes("waterstof");
+                        const isHybr  = bf2.includes("hybride") || bf2.includes("plug");
+                        const isDiesel= bf2.includes("diesel");
+                        const isLpg   = bf2.includes("lpg") || bf2.includes("autogas");
+                        const label   = isElek ? "⚡ Elektriciteit" : isDiesel ? "🛢 Diesel" : isLpg ? "🔵 LPG" : isHybr ? "🔋 Hybride (benzine)" : "⛽ Benzine";
+                        const cbsNota = isElek ? "Handmatig invullen (CBS heeft geen thuislaadprijs)" : isDiesel ? "CBS 81567NED diesel, niet-snelweg" : isLpg ? "CBS 81567NED LPG, niet-snelweg" : isHybr ? "CBS 81567NED benzine E95, niet-snelweg" : "CBS 81567NED benzine E95, niet-snelweg";
+                        return (
+                          <div style={{ fontSize: 12, color: "#666", background: "#f7f6f2", borderRadius: 6, padding: "5px 10px", marginBottom: 4 }}>
+                            {label} · <span style={{ color: "#bbb" }}>{cbsNota}</span>
+                          </div>
+                        );
+                      })()}
+
+                      {/* CBS knop alleen voor niet-elektrisch */}
+                      {!((state.brandstof || "").toLowerCase().includes("elektr") || (state.brandstof || "").toLowerCase().includes("waterstof")) && (
+                        <button
+                          onClick={async () => {
+                            set("cbsLaden", true);
+                            try {
+                              const bf2 = (state.brandstof || "").toLowerCase();
+                              const isDiesel = bf2.includes("diesel");
+                              const isLpg    = bf2.includes("lpg") || bf2.includes("autogas");
+                              // Hybride rijdt op benzine voor brandstofkosten
+                              const soortNr  = isDiesel ? "2" : isLpg ? "3" : "1";
+                              const startJr = aankoopDt.getFullYear();
+                              const eindJr  = Math.min(verkoopDt.getFullYear(), new Date().getFullYear());
+
+                              const url = `https://opendata.cbs.nl/ODataApi/OData/81567NED/TypedDataSet?$filter=BrandstofSoort eq '${soortNr}' and Locatie eq '3'&$select=Perioden,GemiddeldePompprijs_1&$orderby=Perioden`;
+                              const res = await fetch(url);
+                              const json = await res.json();
+                              const records = (json?.value || []).filter(r => r.GemiddeldePompprijs_1 != null);
+
+                              const perJaar = {};
+                              for (const r of records) {
+                                const yr = Number(r.Perioden.slice(0, 4));
+                                if (yr >= startJr && yr <= eindJr) {
+                                  if (!perJaar[yr]) perJaar[yr] = [];
+                                  perJaar[yr].push(r.GemiddeldePompprijs_1);
+                                }
+                              }
+                              const prijzenPerJaar = {};
+                              for (const [yr, vals] of Object.entries(perJaar)) {
+                                const gem = vals.reduce((s, v) => s + v, 0) / vals.length;
+                                prijzenPerJaar[yr] = parseFloat(gem.toFixed(3));
+                              }
+                              set("brandstofPrijzenPerJaar", prijzenPerJaar);
+                            } catch {}
+                            set("cbsLaden", false);
+                          }}
+                          style={{ padding: "8px 14px", fontSize: 12, background: "#f0f4ff", border: `0.5px solid ${COLORS.primary}40`, borderRadius: 6, cursor: "pointer", color: COLORS.primary }}>
+                          {state.cbsLaden ? "Bezig…" : "↻ CBS-prijzen ophalen per jaar"}
+                        </button>
+                      )}
+                      <span style={{ fontSize: 11, color: "#bbb" }}>niet-snelweg · gemiddeld per jaar</span>
+                    </div>
+
+                    {/* Voor elektrisch: handmatig prijs per jaar invoeren */}
+                    {((state.brandstof || "").toLowerCase().includes("elektr") || (state.brandstof || "").toLowerCase().includes("waterstof")) && (
+                      <div style={{ marginBottom: 12 }}>
+                        <div style={{ fontSize: 12, color: "#bbb", marginBottom: 8 }}>
+                          Vul handmatig de gemiddelde stroomprijs per jaar in (€/kWh) — bijv. via je energierekening of vergelijkingssite.
+                        </div>
+                        {Array.from({ length: Math.min(Math.ceil(bezitsjaren) + 1, 12) }, (_, i) => aankoopDt.getFullYear() + i)
+                          .filter(j => j <= Math.min(verkoopDt.getFullYear(), new Date().getFullYear()))
+                          .map(jr => {
+                            const huidig = (state.brandstofPrijzenPerJaar || {})[jr] || "";
+                            return (
+                              <div key={jr} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                                <label style={{ fontSize: 13, color: "#666", width: 50, flexShrink: 0 }}>{jr}</label>
+                                <input type="number" step="0.01" placeholder="bijv. 0.25"
+                                  value={huidig}
+                                  onChange={e => {
+                                    const val = e.target.value ? parseFloat(e.target.value) : null;
+                                    set("brandstofPrijzenPerJaar", { ...(state.brandstofPrijzenPerJaar || {}), [jr]: val });
+                                  }}
+                                  style={{ width: 100 }} />
+                                <span style={{ fontSize: 12, color: "#bbb" }}>€/kWh</span>
+                              </div>
+                            );
+                          })}
+                      </div>
+                    )}
+
+                    {/* Tabel met prijs per jaar + berekende kosten */}
+                    {(() => {
+                      const startJr = aankoopDt.getFullYear();
+                      const eindJr  = verkoopDt.getFullYear();
+                      const jaren   = Array.from({ length: eindJr - startJr + 1 }, (_, i) => startJr + i);
+                      const cbsPrijzen = state.brandstofPrijzenPerJaar || {};
+                      const verbruikKml = Number(state.gemiddeldVerbruik) || 0;
+                      const kmJr = Number(state.jaarlijkseKm) || 0;
+                      let totaal = 0, aantalMet = 0;
+                      return (
+                        <div style={{ marginBottom: 12 }}>
+                          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                            <thead>
+                              <tr style={{ borderBottom: "0.5px solid #e8e6e0" }}>
+                                <th style={{ textAlign: "left", padding: "5px 8px", fontWeight: 500, color: "#bbb", width: 55 }}>Jaar</th>
+                                <th style={{ textAlign: "left", padding: "5px 8px", fontWeight: 500, color: "#bbb", width: 120 }}>
+                                  {isElektrisch ? "€/kWh" : "€/liter"} <span style={{ fontWeight: 400 }}>(CBS)</span>
+                                </th>
+                                <th style={{ textAlign: "left", padding: "5px 8px", fontWeight: 500, color: "#bbb" }}>Kosten/jaar</th>
+                                <th style={{ textAlign: "left", padding: "5px 8px", fontWeight: 500, color: "#bbb" }}>Per maand</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {jaren.map(jr => {
+                                const cbsPrijs = cbsPrijzen[jr];
+                                const prijs    = cbsPrijs || null;
+                                const kosten   = (prijs && verbruikKml > 0 && kmJr > 0)
+                                  ? Math.round(kmJr / verbruikKml * prijs) : null;
+                                if (kosten) { totaal += kosten; aantalMet++; }
+                                return (
+                                  <tr key={jr} style={{ borderBottom: "0.5px solid #f5f4f0" }}>
+                                    <td style={{ padding: "6px 8px", fontWeight: 600 }}>{jr}</td>
+                                    <td style={{ padding: "6px 8px" }}>
+                                      {cbsPrijs
+                                        ? <span style={{ color: COLORS.primary }}>€{cbsPrijs.toFixed(2).replace(".",",")}</span>
+                                        : <span style={{ color: "#ccc", fontSize: 11 }}>— ophalen</span>}
+                                    </td>
+                                    <td style={{ padding: "6px 8px", fontWeight: kosten ? 500 : 400, color: kosten ? "#1a1a1a" : "#ccc" }}>
+                                      {kosten ? fmt(kosten) : verbruikKml > 0 ? "—" : <span style={{ fontSize: 11 }}>vul verbruik in</span>}
+                                    </td>
+                                    <td style={{ padding: "6px 8px", color: kosten ? COLORS.success : "#ccc" }}>
+                                      {kosten ? fmt(Math.round(kosten / 12)) : "—"}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                            {aantalMet > 1 && (
+                              <tfoot>
+                                <tr style={{ borderTop: "1px solid #e0ddd8" }}>
+                                  <td colSpan={2} style={{ padding: "6px 8px", color: "#999", fontSize: 12 }}>Gemiddeld/jaar</td>
+                                  <td style={{ padding: "6px 8px", fontWeight: 600 }}>{fmt(Math.round(totaal / aantalMet))}</td>
+                                  <td style={{ padding: "6px 8px", color: COLORS.success, fontWeight: 500 }}>{fmt(Math.round(totaal / aantalMet / 12))}</td>
+                                </tr>
+                              </tfoot>
+                            )}
+                          </table>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Toggle automatische kostenpost */}
+                    {(() => {
+                      const cbsPrijzen    = state.brandstofPrijzenPerJaar || {};
+                      const verbruikKml   = Number(state.gemiddeldVerbruik) || 0;
+                      const kmJr          = Number(state.jaarlijkseKm) || 0;
+                      const heeftPrijzen  = Object.keys(cbsPrijzen).length > 0 && verbruikKml > 0 && kmJr > 0;
+                      return (
+                        <Toggle
+                          checked={!!state.brandstofAutomatisch}
+                          onChange={v => set("brandstofAutomatisch", v)}
+                          label="Brandstofkosten automatisch toevoegen aan kostenlijst"
+                          sub={heeftPrijzen
+                            ? `Per jaar eigen CBS-prijs · ${aankoopDt.getFullYear()}–${Math.min(verkoopDt.getFullYear(), new Date().getFullYear())}`
+                            : "Haal eerst CBS-prijzen op en vul verbruik in"}
+                        />
+                      );
+                    })()}
+                  </div>
+                );
+              })(),
             },
             {
               key: "mrb", titel: "Motorrijtuigenbelasting",
@@ -823,90 +1225,165 @@ export default function App() {
             },
             {
               key: "verzekering", titel: "Verzekering & pechhulp",
-              inhoud: (
-                <div>
-                  {/* Verzekering hoofddekking */}
-                  <div style={{ marginBottom: 14 }}>
-                    <div style={{ fontSize: 12, color: "#bbb", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Autoverzekering</div>
-                    <Row label="Type dekking" wide>
-                      <select value={state.verzekeringType || "allrisk"} onChange={e => set("verzekeringType", e.target.value)} style={{ flex: 1 }}>
-                        <option value="allrisk">All risk (volledig casco)</option>
-                        <option value="beperktcasco">Beperkt casco (BC)</option>
-                        <option value="wettelijk">WA (wettelijke aansprakelijkheid)</option>
-                        <option value="waplusbs">WA+ (bijzondere schade)</option>
-                      </select>
-                    </Row>
-                    <Toggle checked={state.verzekeringAutomatisch} onChange={v => set("verzekeringAutomatisch", v)}
-                      label="Premie automatisch splitsen in maandposten"
-                      sub="Voer per jaar een jaarbedrag in — de app maakt 12 maandposten aan" />
-                    {state.verzekeringAutomatisch && (
-                      <div style={{ marginTop: 10 }}>
-                        {state.verzekeringJaren.length > 0 && (
-                          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, marginBottom: 10 }}>
-                            <thead><tr style={{ borderBottom: "0.5px solid #e8e6e0" }}>
-                              {["Jaar","Jaarbedrag","Per maand",""].map(h => <th key={h} style={{ textAlign: "left", padding: "5px 8px", fontWeight: 500, color: "#bbb" }}>{h}</th>)}
-                            </tr></thead>
-                            <tbody>
-                              {state.verzekeringJaren.map(v => (
-                                <tr key={v.startJaar} style={{ borderBottom: "0.5px solid #f0ede8" }}>
-                                  <td style={{ padding: "6px 8px", fontWeight: 500 }}>{v.startJaar}</td>
-                                  <td style={{ padding: "6px 8px" }}>{fmt(v.bedrag)}</td>
-                                  <td style={{ padding: "6px 8px", color: "#888" }}>{fmt(Math.round(v.bedrag / 12))}</td>
-                                  <td style={{ padding: "6px 8px" }}>
-                                    <button onClick={() => set("verzekeringJaren", state.verzekeringJaren.filter(x => x.startJaar !== v.startJaar))}
-                                      style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.danger, fontSize: 14 }}>✕</button>
+              inhoud: (() => {
+                const VERZ_TYPEN = [
+                  { value: "allrisk",       label: "All risk" },
+                  { value: "beperktcasco",  label: "Beperkt casco" },
+                  { value: "wettelijk",     label: "WA" },
+                  { value: "waplus",        label: "WA+" },
+                ];
+                const PECH_TYPEN = [
+                  { value: "",              label: "Geen" },
+                  { value: "anwb_basis",    label: "ANWB Basis" },
+                  { value: "anwb_compleet", label: "ANWB Compleet" },
+                  { value: "anwb_europa",   label: "ANWB Europa" },
+                  { value: "aa",            label: "AutoMobiel" },
+                  { value: "anders",        label: "Anders" },
+                ];
+
+                // Bestaande jaar-data ophalen
+                const verzJarenMap = {};
+                (state.verzekeringJaren || []).forEach(v => { verzJarenMap[v.startJaar] = v; });
+                const pechhulpJarenMap = {};
+                (state.pechhulpJaren || []).forEach(v => { pechhulpJarenMap[v.startJaar] = v; });
+
+                const aantalJr = Math.ceil(bezitsjaren) + 1;
+                const startJr  = aankoopDt.getFullYear();
+                const jarenLijst = Array.from({ length: Math.max(aantalJr, 1) }, (_, i) => startJr + i)
+                  .filter(j => j <= verkoopDt.getFullYear());
+
+                const updateVerzJaar = (jaar, key, val) => {
+                  const bestaand = state.verzekeringJaren || [];
+                  const idx = bestaand.findIndex(v => v.startJaar === jaar);
+                  const nieuw = idx >= 0
+                    ? bestaand.map((v, i) => i === idx ? { ...v, [key]: val } : v)
+                    : [...bestaand, { startJaar: jaar, bedrag: 0, type: "allrisk", [key]: val }];
+                  set("verzekeringJaren", nieuw);
+                };
+
+                const updatePechJaar = (jaar, key, val) => {
+                  const bestaand = state.pechhulpJaren || [];
+                  const idx = bestaand.findIndex(v => v.startJaar === jaar);
+                  const nieuw = idx >= 0
+                    ? bestaand.map((v, i) => i === idx ? { ...v, [key]: val } : v)
+                    : [...bestaand, { startJaar: jaar, type: "", bedrag: 0, [key]: val }];
+                  set("pechhulpJaren", nieuw);
+                };
+
+                return (
+                  <div>
+                    {/* Interne tab-knoppen */}
+                    <div style={{ display: "flex", gap: 0, marginBottom: 14, borderBottom: "1px solid #e8e6e0" }}>
+                      {[["verz", "Autoverzekering"], ["pech", "Pechhulp"]].map(([id, lbl]) => (
+                        <button key={id} onClick={() => setVerzTab(id)} style={{
+                          padding: "7px 16px", fontSize: 13, background: "none", border: "none", cursor: "pointer",
+                          fontWeight: verzTab === id ? 600 : 400,
+                          color: verzTab === id ? COLORS.primary : "#999",
+                          borderBottom: verzTab === id ? `2px solid ${COLORS.primary}` : "2px solid transparent",
+                          marginBottom: -1,
+                        }}>{lbl}</button>
+                      ))}
+                    </div>
+
+                    {/* Tab: Autoverzekering */}
+                    {verzTab === "verz" && (
+                      <div>
+                        <Toggle checked={state.verzekeringAutomatisch} onChange={v => set("verzekeringAutomatisch", v)}
+                          label="Premie automatisch splitsen in maandposten"
+                          sub="Vul per jaar een jaarbedrag in — de app maakt 12 maandposten aan" />
+                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, marginTop: 12 }}>
+                          <thead>
+                            <tr style={{ borderBottom: "0.5px solid #e8e6e0" }}>
+                              <th style={{ textAlign: "left", padding: "5px 8px", fontWeight: 500, color: "#bbb", width: 50 }}>Jaar</th>
+                              <th style={{ textAlign: "left", padding: "5px 8px", fontWeight: 500, color: "#bbb" }}>Type</th>
+                              <th style={{ textAlign: "left", padding: "5px 8px", fontWeight: 500, color: "#bbb", width: 120 }}>Jaarbedrag (€)</th>
+                              <th style={{ textAlign: "left", padding: "5px 8px", fontWeight: 500, color: "#bbb", width: 90 }}>Per maand</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {jarenLijst.map(jaar => {
+                              const vj = verzJarenMap[jaar] || {};
+                              return (
+                                <tr key={jaar} style={{ borderBottom: "0.5px solid #f0ede8" }}>
+                                  <td style={{ padding: "6px 8px", fontWeight: 600 }}>{jaar}</td>
+                                  <td style={{ padding: "6px 4px" }}>
+                                    <select value={vj.type || "allrisk"} onChange={e => updateVerzJaar(jaar, "type", e.target.value)}
+                                      style={{ width: "100%", fontSize: 13 }}>
+                                      {VERZ_TYPEN.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                                    </select>
+                                  </td>
+                                  <td style={{ padding: "6px 4px" }}>
+                                    <input type="number" placeholder="0" value={vj.bedrag || ""}
+                                      onChange={e => updateVerzJaar(jaar, "bedrag", e.target.value ? Number(e.target.value) : 0)}
+                                      style={{ width: "100%" }} />
+                                  </td>
+                                  <td style={{ padding: "6px 8px", color: vj.bedrag > 0 ? COLORS.success : "#bbb", fontWeight: vj.bedrag > 0 ? 500 : 400 }}>
+                                    {vj.bedrag > 0 ? fmt(Math.round(vj.bedrag / 12)) : "—"}
                                   </td>
                                 </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                        {verzPosten.length > 0 && (
+                          <div style={{ marginTop: 8, fontSize: 12, color: COLORS.success }}>
+                            ✓ {verzPosten.length} maandposten toegevoegd aan kostenlijst
+                          </div>
                         )}
-                        <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                            <label style={{ fontSize: 12, color: "#999" }}>Jaar</label>
-                            <input type="number" value={nieuwVerzJaar} onChange={e => setNieuwVerzJaar(e.target.value)} style={{ width: 80 }} />
+                      </div>
+                    )}
+
+                    {/* Tab: Pechhulp */}
+                    {verzTab === "pech" && (
+                      <div>
+                        <p style={{ fontSize: 13, color: "#999", marginBottom: 12 }}>
+                          Pechhulp wordt als één jaarpost toegevoegd aan de kostenlijst.
+                        </p>
+                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                          <thead>
+                            <tr style={{ borderBottom: "0.5px solid #e8e6e0" }}>
+                              <th style={{ textAlign: "left", padding: "5px 8px", fontWeight: 500, color: "#bbb", width: 50 }}>Jaar</th>
+                              <th style={{ textAlign: "left", padding: "5px 8px", fontWeight: 500, color: "#bbb" }}>Aanbieder</th>
+                              <th style={{ textAlign: "left", padding: "5px 8px", fontWeight: 500, color: "#bbb", width: 120 }}>Jaarbedrag (€)</th>
+                              <th style={{ textAlign: "left", padding: "5px 8px", fontWeight: 500, color: "#bbb", width: 90 }}>Per maand</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {jarenLijst.map(jaar => {
+                              const pj = pechhulpJarenMap[jaar] || {};
+                              return (
+                                <tr key={jaar} style={{ borderBottom: "0.5px solid #f0ede8" }}>
+                                  <td style={{ padding: "6px 8px", fontWeight: 600 }}>{jaar}</td>
+                                  <td style={{ padding: "6px 4px" }}>
+                                    <select value={pj.type || ""} onChange={e => updatePechJaar(jaar, "type", e.target.value)}
+                                      style={{ width: "100%", fontSize: 13 }}>
+                                      {PECH_TYPEN.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                                    </select>
+                                  </td>
+                                  <td style={{ padding: "6px 4px" }}>
+                                    <input type="number" placeholder="0" value={pj.bedrag || ""}
+                                      onChange={e => updatePechJaar(jaar, "bedrag", e.target.value ? Number(e.target.value) : 0)}
+                                      style={{ width: "100%" }}
+                                      disabled={!pj.type} />
+                                  </td>
+                                  <td style={{ padding: "6px 8px", color: pj.bedrag > 0 ? COLORS.success : "#bbb", fontWeight: pj.bedrag > 0 ? 500 : 400 }}>
+                                    {pj.bedrag > 0 ? fmt(Math.round(pj.bedrag / 12)) : "—"}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                        {pechhulpPosten.length > 0 && (
+                          <div style={{ marginTop: 8, fontSize: 12, color: COLORS.success }}>
+                            ✓ {pechhulpPosten.length} pechhulp-posten toegevoegd aan kostenlijst
                           </div>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                            <label style={{ fontSize: 12, color: "#999" }}>Jaarbedrag (€)</label>
-                            <input type="number" placeholder="bijv. 1200" value={nieuwVerzBedrag} onChange={e => setNieuwVerzBedrag(e.target.value)} onKeyDown={e => e.key === "Enter" && voegVerzJaarToe()} style={{ width: 150 }} />
-                          </div>
-                          <button onClick={voegVerzJaarToe} style={{ background: COLORS.primary, color: "#fff", border: "none", borderRadius: 6, padding: "9px 14px", cursor: "pointer", fontWeight: 500 }}>+ Toevoegen</button>
-                        </div>
-                        {verzPosten.length > 0 && <div style={{ marginTop: 8, fontSize: 12, color: COLORS.success }}>✓ {verzPosten.length} maandposten toegevoegd</div>}
+                        )}
                       </div>
                     )}
                   </div>
-
-                  {/* Pechhulp */}
-                  <div style={{ borderTop: "0.5px solid #f0ede8", paddingTop: 14 }}>
-                    <div style={{ fontSize: 12, color: "#bbb", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Pechhulpverzekering</div>
-                    <Row label="Aanbieder" wide>
-                      <select value={state.pechhulpType || ""} onChange={e => set("pechhulpType", e.target.value)} style={{ flex: 1 }}>
-                        <option value="">Geen pechhulp</option>
-                        <option value="anwb_basis">ANWB Wegenwacht Basis</option>
-                        <option value="anwb_compleet">ANWB Wegenwacht Compleet</option>
-                        <option value="anwb_europa">ANWB Wegenwacht Europa</option>
-                        <option value="aa_basis">AutoMobiel Hulp Basis</option>
-                        <option value="verzekering">Via autoverzekering</option>
-                        <option value="anders">Anders</option>
-                      </select>
-                    </Row>
-                    {state.pechhulpType && state.pechhulpType !== "" && (
-                      <>
-                        <Row label="Jaarpremie (€)" wide>
-                          <input type="number" placeholder="bijv. 95" value={state.pechhulpJaar || ""} onChange={e => set("pechhulpJaar", e.target.value ? Number(e.target.value) : null)} style={{ flex: 1 }} />
-                        </Row>
-                        {state.pechhulpJaar > 0 && (
-                          <div style={{ padding: "8px 12px", background: "#f7f6f2", borderRadius: 8, fontSize: 13, marginTop: 4 }}>
-                            {fmt(state.pechhulpJaar)}/jaar · {fmt(Math.round(state.pechhulpJaar / 12))}/maand
-                            <span style={{ color: "#bbb", marginLeft: 8, fontSize: 11 }}>— wordt als aparte post in kostenlijst getoond</span>
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </div>
-              ),
+                );
+              })(),
             },
             {
               key: "vergoedingen", titel: "Vergoedingen van werkgever",
@@ -920,19 +1397,23 @@ export default function App() {
                         <input type="number" placeholder="bijv. 300" value={state.mobiliteitBrutoMaand} onChange={e => set("mobiliteitBrutoMaand", e.target.value)} style={{ flex: 1 }} />
                       </Row>
                       <Row label="Belastingschijf" wide>
-                        <select value={state.belastingschijf}
-                          onChange={e => set("belastingschijf", Number(e.target.value))}
-                          style={{ flex: 1 }}>
-                          <option value={36.97}>36,97% (schijf 1, tot ~€75.518)</option>
-                          <option value={49.50}>49,50% (schijf 2, boven ~€75.518)</option>
-                        </select>
-                        <input type="number" step="0.1" value={state.belastingschijf}
-                          onChange={e => set("belastingschijf", Number(e.target.value))}
-                          style={{ width: 70, marginLeft: 6 }}
-                          title="Handmatig aanpassen" />
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1 }}>
+                          <select value={state.belastingschijf}
+                            onChange={e => set("belastingschijf", Number(e.target.value))}
+                            style={{ width: "100%", fontSize: 13 }}>
+                            <option value={36.97}>36,97% — schijf 1 (tot ~€75.518)</option>
+                            <option value={49.50}>49,50% — schijf 2 (boven ~€75.518)</option>
+                          </select>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span style={{ fontSize: 11, color: "#bbb", flexShrink: 0 }}>Afwijkend %:</span>
+                            <input type="number" step="0.1" value={state.belastingschijf}
+                              onChange={e => set("belastingschijf", Number(e.target.value))}
+                              style={{ width: 70, fontSize: 13 }} />
+                          </div>
+                        </div>
                       </Row>
                       {mobBrutoMaand > 0 && (
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "#f0faf4", borderRadius: 8, fontSize: 13 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "#f0faf4", borderRadius: 8, fontSize: 13, marginTop: 4 }}>
                           <span><b>{fmt(mobBrutoMaand)}</b> bruto</span>
                           <span style={{ color: "#bbb" }}>→</span>
                           <span><b style={{ color: COLORS.success }}>{fmt(mobNettoMaand)}</b> netto/mnd</span>
@@ -952,9 +1433,9 @@ export default function App() {
                         <input type="number" placeholder="overschrijft tarief×km" value={state.kmVergMaandTotaal} onChange={e => set("kmVergMaandTotaal", e.target.value)} style={{ flex: 1 }} />
                       </Row>
                       {kmVergBruto > 0 && (
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "#f0faf4", borderRadius: 8, fontSize: 13 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "#f0faf4", borderRadius: 8, fontSize: 13, marginTop: 4 }}>
                           <span><b>{fmt(kmVergBruto)}</b> bruto</span>
-                          {belastbaar > 0 && <span style={{ color: "#bbb", fontSize: 11 }}>({fmt(vrijgesteld)} vrij · {fmt(belastbaar)} belast)</span>}
+                          {belastbaar > 0 && <span style={{ color: "#bbb", fontSize: 11 }}>({fmt(vrijgesteld)} vrij)</span>}
                           <span style={{ color: "#bbb" }}>→</span>
                           <span><b style={{ color: COLORS.success }}>{fmt(kmVergNetto)}</b> netto/mnd</span>
                         </div>
@@ -1278,6 +1759,139 @@ export default function App() {
               />
             ))}
           </Card>
+
+          {/* Referentiekosten vergelijking */}
+          {(() => {
+            const segment    = bepaalSegment(state.cataloguswaarde, state.merk);
+            const segInfo    = REF_SEGMENTEN.find(s => s.id === segment);
+            const ref        = berekenReferentieKosten(segment, state.bouwjaar);
+            const leeftijdIdx= getLeeftijdsIndex(state.bouwjaar);
+            const leeftijdLabel = ["0–3 jaar", "3–6 jaar", "6–10 jaar", "10+ jaar"][leeftijdIdx];
+
+            // Werkelijke kosten per categorie (excl. brandstof en MRB — die zijn te persoonlijk)
+            const werkCats = ["onderhoud", "reparatie", "banden", "wassen"];
+            const werkelijkPerCat = {};
+            werkCats.forEach(cat => {
+              werkelijkPerCat[cat] = alleKosten
+                .filter(k => k.categorie === cat)
+                .reduce((s, k) => s + Number(k.bedrag), 0);
+            });
+            const werkelijkJaren = Math.max(verlopenJaren, 0.5);
+            const werkelijkTotaalJaar = werkCats.reduce((s, c) => s + werkelijkPerCat[c], 0) / werkelijkJaren;
+
+            const catLabels = {
+              onderhoud: { label: "Onderhoud & APK", icon: "🔧" },
+              reparatie: { label: "Reparaties",      icon: "🛠" },
+              banden:    { label: "Banden",           icon: "🔘" },
+              wassen:    { label: "Wassen",           icon: "💧" },
+            };
+
+            const maxBar = Math.max(
+              ref.totaal,
+              werkelijkTotaalJaar,
+              ...werkCats.map(c => Math.max(ref[c], werkelijkPerCat[c] / werkelijkJaren)),
+              1
+            );
+
+            return (
+              <Card>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8, marginBottom: "1rem" }}>
+                  <div>
+                    <SectionTitle style={{ margin: 0 }}>Vergelijking met referentiekosten</SectionTitle>
+                    <div style={{ fontSize: 12, color: "#999", marginTop: 3 }}>
+                      Segment: <b>{segInfo?.label}</b> · {leeftijdLabel} · Bijv. {segInfo?.voorbeeld}
+                    </div>
+                  </div>
+                  {/* Segment aanpassen */}
+                  <select value={segment} onChange={() => {}} disabled
+                    style={{ fontSize: 12, padding: "4px 8px", borderRadius: 6, color: "#999", background: "#f7f6f2", border: "0.5px solid #e0ddd8" }}>
+                    {REF_SEGMENTEN.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                  </select>
+                </div>
+
+                {/* Totaalvergelijking */}
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: "1.25rem" }}>
+                  <div style={{ flex: 1, minWidth: 140, background: "#f7f6f2", borderRadius: 8, padding: "10px 14px" }}>
+                    <div style={{ fontSize: 11, color: "#bbb", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Jouw kosten/jaar</div>
+                    <div style={{ fontSize: 20, fontWeight: 600, color: COLORS.primary }}>{fmt(werkelijkTotaalJaar)}</div>
+                    <div style={{ fontSize: 11, color: "#bbb" }}>gemiddeld over {werkelijkJaren.toFixed(1)} jaar</div>
+                  </div>
+                  <div style={{ flex: 1, minWidth: 140, background: "#f7f6f2", borderRadius: 8, padding: "10px 14px" }}>
+                    <div style={{ fontSize: 11, color: "#bbb", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Referentie/jaar</div>
+                    <div style={{ fontSize: 20, fontWeight: 600, color: "#666" }}>{fmt(ref.totaal)}</div>
+                    <div style={{ fontSize: 11, color: "#bbb" }}>segment­gemiddelde</div>
+                  </div>
+                  <div style={{ flex: 1, minWidth: 140, borderRadius: 8, padding: "10px 14px",
+                    background: werkelijkTotaalJaar > ref.totaal * 1.2 ? "#fdf3ef" : werkelijkTotaalJaar < ref.totaal * 0.8 ? "#f0faf4" : "#f7f6f2" }}>
+                    <div style={{ fontSize: 11, color: "#bbb", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>Verschil/jaar</div>
+                    <div style={{ fontSize: 20, fontWeight: 600,
+                      color: werkelijkTotaalJaar > ref.totaal ? COLORS.danger : COLORS.success }}>
+                      {werkelijkTotaalJaar > ref.totaal ? "+" : ""}{fmt(Math.round(werkelijkTotaalJaar - ref.totaal))}
+                    </div>
+                    <div style={{ fontSize: 11, color: "#bbb" }}>
+                      {werkelijkTotaalJaar > ref.totaal * 1.2 ? "Boven gemiddelde" :
+                       werkelijkTotaalJaar < ref.totaal * 0.8 ? "Onder gemiddelde" : "Rond het gemiddelde"}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Per categorie */}
+                <div style={{ fontSize: 12, fontWeight: 600, color: "#bbb", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10 }}>
+                  Per categorie (excl. brandstof en MRB)
+                </div>
+                {werkCats.map(cat => {
+                  const werkJaar  = (werkelijkPerCat[cat] || 0) / werkelijkJaren;
+                  const refJaar   = ref[cat];
+                  const diff      = werkJaar - refJaar;
+                  const pct       = refJaar > 0 ? Math.round((werkJaar / refJaar) * 100) : null;
+                  const heeftData = werkelijkPerCat[cat] > 0;
+                  return (
+                    <div key={cat} style={{ marginBottom: 14 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+                        <span style={{ fontSize: 13 }}>{catLabels[cat].icon} {catLabels[cat].label}</span>
+                        <div style={{ display: "flex", gap: 12, alignItems: "baseline" }}>
+                          {heeftData ? (
+                            <span style={{ fontSize: 13, fontWeight: 600,
+                              color: diff > refJaar * 0.25 ? COLORS.danger : diff < -refJaar * 0.25 ? COLORS.success : "#1a1a1a" }}>
+                              {fmt(werkJaar)}/jr
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: 12, color: "#ccc" }}>geen data</span>
+                          )}
+                          <span style={{ fontSize: 12, color: "#bbb" }}>ref: {fmt(refJaar)}/jr</span>
+                          {heeftData && pct !== null && (
+                            <span style={{ fontSize: 11, padding: "2px 6px", borderRadius: 10,
+                              background: pct > 125 ? "#fdf3ef" : pct < 75 ? "#f0faf4" : "#f7f6f2",
+                              color: pct > 125 ? COLORS.danger : pct < 75 ? COLORS.success : "#999" }}>
+                              {pct}%
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      {/* Dubbele balk: jouw kosten vs referentie */}
+                      <div style={{ position: "relative", height: 8, background: "#f0ede8", borderRadius: 4 }}>
+                        {/* Referentie balk (lichtgrijs) */}
+                        <div style={{ position: "absolute", top: 0, left: 0, height: 8, borderRadius: 4,
+                          width: `${(refJaar / maxBar) * 100}%`, background: "#d4d0c8" }} />
+                        {/* Werkelijk balk (gekleurd, over referentie) */}
+                        {heeftData && (
+                          <div style={{ position: "absolute", top: 0, left: 0, height: 8, borderRadius: 4,
+                            width: `${Math.min((werkJaar / maxBar) * 100, 100)}%`,
+                            background: diff > refJaar * 0.25 ? COLORS.danger : diff < -refJaar * 0.25 ? COLORS.success : COLORS.primary,
+                            opacity: 0.85 }} />
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                <div style={{ fontSize: 12, color: "#bbb", marginTop: 8, lineHeight: 1.6 }}>
+                  ⓘ Referenties zijn segmentgemiddelden op basis van ANWB-richtlijnen (2024). Brandstof, MRB en verzekering zijn niet meegenomen — die hangen sterk af van gebruik en persoonlijke keuzes.
+                  Segment wordt automatisch bepaald op basis van cataloguswaarde ({fmt(state.cataloguswaarde)}) en merk.
+                </div>
+              </Card>
+            );
+          })()}
         </div>
       )}
 
@@ -1285,45 +1899,174 @@ export default function App() {
       {tab === "grafiek" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
           <Card>
-            <SectionTitle>Cumulatieve kosten: eigen auto vs. privé lease</SectionTitle>
+            <SectionTitle>Cumulatieve kosten: eigen auto vs. lease</SectionTitle>
             <div style={{ fontSize: 13, color: "#999", marginBottom: 14 }}>
-              Eigen auto: aankoopprijs {fmt(state.aankoopprijs)} + afschrijving + gemaakte kosten. Lease: {fmt(leasePrive)}/maand.
+              Eigen auto: aankoopprijs {fmt(state.aankoopprijs)} + afschrijving + gemaakte kosten.
+              Lease: {fmt(leasePrive)}/mnd (stijgt {state.leaseStijgingPct || 10}% per {state.leaseLooptijd || 48} mnd).
             </div>
-            <ResponsiveContainer width="100%" height={270}>
+            <ResponsiveContainer width="100%" height={290}>
               <LineChart data={grafiekData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0ede8" />
                 <XAxis dataKey="jaar" tick={{ fontSize: 12 }} />
                 <YAxis tickFormatter={v => `€${Math.round(v/1000)}k`} tick={{ fontSize: 12 }} width={54} />
                 <Tooltip content={<CustomTooltip />} />
-                <Legend wrapperStyle={{ fontSize: 13 }} />
-                <Line type="monotone" dataKey="Eigen auto"  stroke={COLORS.primary} strokeWidth={2.5} dot={{ r: 3 }} />
-                <Line type="monotone" dataKey="Privé lease" stroke={COLORS.lease}   strokeWidth={2.5} dot={{ r: 3 }} strokeDasharray="6 3" />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Line type="monotone" dataKey="Eigen auto"     stroke={COLORS.primary} strokeWidth={2.5} dot={{ r: 3 }} />
+                <Line type="monotone" dataKey="Privé lease"    stroke={COLORS.lease}   strokeWidth={2}   dot={{ r: 2 }} strokeDasharray="6 3" />
+                <Line type="monotone" dataKey="Zakelijk lease" stroke="#8E44AD"        strokeWidth={2}   dot={{ r: 2 }} strokeDasharray="3 3" />
               </LineChart>
             </ResponsiveContainer>
             {grafiekData.length > 1 && (() => {
-              const v = grafiekData[grafiekData.length-1]["Eigen auto"] - grafiekData[grafiekData.length-1]["Privé lease"];
+              const last = grafiekData[grafiekData.length - 1];
+              const vPriv = last["Eigen auto"] - last["Privé lease"];
+              const vZak  = last["Eigen auto"] - last["Zakelijk lease"];
               return (
-                <div style={{ marginTop: 12, padding: "10px 14px", background: v > 0 ? "#fdf3ef" : "#f0faf4", borderRadius: 8, fontSize: 13 }}>
-                  {v > 0 ? `📊 Na ${Math.ceil(bezitsjaren)} jaar is eigen auto ${fmt(v)} duurder dan privé lease.`
-                         : `📊 Na ${Math.ceil(bezitsjaren)} jaar is eigen auto ${fmt(Math.abs(v))} goedkoper dan privé lease.`}
+                <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+                  <div style={{ padding: "8px 14px", background: vPriv > 0 ? "#fdf3ef" : "#f0faf4", borderRadius: 8, fontSize: 13 }}>
+                    📋 Privé lease: na {Math.ceil(bezitsjaren)} jaar is eigen auto <b>{fmt(Math.abs(vPriv))} {vPriv > 0 ? "duurder" : "goedkoper"}</b>
+                  </div>
+                  <div style={{ padding: "8px 14px", background: vZak > 0 ? "#fdf3ef" : "#f0faf4", borderRadius: 8, fontSize: 13 }}>
+                    💼 Zakelijk lease: na {Math.ceil(bezitsjaren)} jaar is eigen auto <b>{fmt(Math.abs(vZak))} {vZak > 0 ? "duurder" : "goedkoper"}</b>
+                  </div>
                 </div>
               );
             })()}
           </Card>
           <Card>
             <SectionTitle>Gemaakte kosten per jaar</SectionTitle>
-            {jaarBarData.length === 0 ? <div style={{ color: "#bbb", fontSize: 14 }}>Nog geen kosten.</div>
-              : <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={jaarBarData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0ede8" vertical={false} />
-                    <XAxis dataKey="jaar" tick={{ fontSize: 12 }} />
-                    <YAxis tickFormatter={v => `€${Math.round(v/1000)}k`} tick={{ fontSize: 12 }} width={48} />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Bar dataKey="kosten" fill={COLORS.primary} radius={[4,4,0,0]} name="Kosten" />
-                  </BarChart>
-                </ResponsiveContainer>
+            {jaarBarData.length === 0
+              ? <div style={{ color: "#bbb", fontSize: 14 }}>Nog geen kosten.</div>
+              : <>
+                  <ResponsiveContainer width="100%" height={240}>
+                    <BarChart data={jaarBarData} margin={{ top: 16, right: 16, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0ede8" vertical={false} />
+                      <XAxis dataKey="jaar" tick={{ fontSize: 12 }} />
+                      <YAxis tickFormatter={v => `€${Math.round(v/1000)}k`} tick={{ fontSize: 12 }} width={48} />
+                      <Tooltip
+                        content={({ active, payload, label }) => {
+                          if (!active || !payload?.length) return null;
+                          const vast     = payload.find(p => p.dataKey === "vast")?.value || 0;
+                          const variabel = payload.find(p => p.dataKey === "variabel")?.value || 0;
+                          return (
+                            <div style={{ background: "#fff", border: "0.5px solid #e0ddd8", borderRadius: 8, padding: "10px 14px", fontSize: 13 }}>
+                              <div style={{ fontWeight: 600, marginBottom: 6 }}>{label}</div>
+                              <div style={{ color: COLORS.primary }}>Vast: {fmt(vast)}</div>
+                              <div style={{ color: COLORS.accent }}>Variabel: {fmt(variabel)}</div>
+                              <div style={{ borderTop: "0.5px solid #f0ede8", marginTop: 6, paddingTop: 6, fontWeight: 500 }}>Totaal: {fmt(vast + variabel)}</div>
+                            </div>
+                          );
+                        }}
+                      />
+                      <Legend wrapperStyle={{ fontSize: 12 }} />
+                      <Bar dataKey="vast"     stackId="a" fill={COLORS.primary} name="Vast"     radius={[0,0,0,0]} />
+                      <Bar dataKey="variabel" stackId="a" fill={COLORS.accent}  name="Variabel" radius={[4,4,0,0]} />
+                      {jaarBarData.length > 1 && (
+                        <ReferenceLine y={jaarBarGemiddelde} stroke="#999" strokeDasharray="5 3"
+                          label={{ value: `Gem. ${fmt(jaarBarGemiddelde)}`, fontSize: 11, fill: "#999", position: "insideTopRight" }} />
+                      )}
+                    </BarChart>
+                  </ResponsiveContainer>
+                  <div style={{ display: "flex", gap: 16, fontSize: 12, color: "#999", marginTop: 8, flexWrap: "wrap" }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                      <span style={{ width: 10, height: 10, background: COLORS.primary, borderRadius: 2, display: "inline-block" }} />Vast (onderhoud, verzekering, MRB…)
+                    </span>
+                    <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                      <span style={{ width: 10, height: 10, background: COLORS.accent, borderRadius: 2, display: "inline-block" }} />Variabel (brandstof, parkeren…)
+                    </span>
+                    <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                      <span style={{ width: 18, height: 2, background: "#999", display: "inline-block", borderRadius: 1 }} />Gemiddelde ({fmt(jaarBarGemiddelde)}/jaar)
+                    </span>
+                  </div>
+                </>
             }
           </Card>
+
+          {/* Verdeling kostentypen — taartgrafiek */}
+          {(() => {
+            const catTotalen = COST_CATEGORIES
+              .map(c => ({
+                id: c.id, label: c.label, icon: c.icon, variabel: c.variabel,
+                waarde: alleKosten.filter(k => k.categorie === c.id).reduce((s, k) => s + Number(k.bedrag), 0),
+              }))
+              .filter(c => c.waarde > 0)
+              .sort((a, b) => b.waarde - a.waarde);
+            const totaal = catTotalen.reduce((s, c) => s + c.waarde, 0);
+            if (catTotalen.length === 0) return null;
+
+            // Kleuren per categorie
+            const CAT_KLEUREN = {
+              brandstof:      "#E67E22",
+              onderhoud:      "#1B4F72",
+              reparatie:      "#2980B9",
+              verzekering:    "#27AE60",
+              wegenbelasting: "#8E44AD",
+              banden:         "#16A085",
+              parkeren:       "#E74C3C",
+              wassen:         "#95A5A6",
+              overig:         "#BDC3C7",
+            };
+
+            const CustomPieLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
+              if (percent < 0.05) return null;
+              const RADIAN = Math.PI / 180;
+              const r = innerRadius + (outerRadius - innerRadius) * 0.55;
+              const x = cx + r * Math.cos(-midAngle * RADIAN);
+              const y = cy + r * Math.sin(-midAngle * RADIAN);
+              return (
+                <text x={x} y={y} fill="#fff" textAnchor="middle" dominantBaseline="central" fontSize={11} fontWeight={600}>
+                  {(percent * 100).toFixed(0)}%
+                </text>
+              );
+            };
+
+            return (
+              <Card>
+                <SectionTitle>Verdeling kostentypen (hele bezitsperiode)</SectionTitle>
+                <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", alignItems: "flex-start" }}>
+                  {/* Taart */}
+                  <div style={{ flex: "0 0 auto" }}>
+                    <ResponsiveContainer width={220} height={220}>
+                      <PieChart>
+                        <Pie data={catTotalen} dataKey="waarde" nameKey="label"
+                          cx="50%" cy="50%" outerRadius={100} innerRadius={45}
+                          labelLine={false} label={CustomPieLabel}>
+                          {catTotalen.map(c => (
+                            <Cell key={c.id} fill={CAT_KLEUREN[c.id] || "#ccc"} />
+                          ))}
+                        </Pie>
+                        <Tooltip formatter={(v, n) => [fmt(v), n]} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  {/* Legenda + balkjes */}
+                  <div style={{ flex: 1, minWidth: 180 }}>
+                    {catTotalen.map(c => (
+                      <div key={c.id} style={{ marginBottom: 10 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 3 }}>
+                          <span style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
+                            <span style={{ width: 10, height: 10, borderRadius: 2, background: CAT_KLEUREN[c.id] || "#ccc", flexShrink: 0, display: "inline-block" }} />
+                            {c.icon} {c.label}
+                            <span style={{ fontSize: 11, color: c.variabel ? COLORS.accent : "#bbb" }}>{c.variabel ? "var" : "vast"}</span>
+                          </span>
+                          <span style={{ fontSize: 13, fontWeight: 600, marginLeft: 8 }}>
+                            {fmt(c.waarde)} <span style={{ fontSize: 11, color: "#bbb", fontWeight: 400 }}>({(c.waarde / totaal * 100).toFixed(0)}%)</span>
+                          </span>
+                        </div>
+                        <div style={{ height: 5, background: "#f0ede8", borderRadius: 3 }}>
+                          <div style={{ height: 5, borderRadius: 3, width: `${(c.waarde / catTotalen[0].waarde) * 100}%`, background: CAT_KLEUREN[c.id] || "#ccc" }} />
+                        </div>
+                      </div>
+                    ))}
+                    <div style={{ fontSize: 12, color: "#bbb", borderTop: "0.5px solid #f0ede8", paddingTop: 8, marginTop: 4 }}>
+                      Totaal: {fmt(totaal)} over {bezitsjaren.toFixed(1)} jaar
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            );
+          })()}
+
           <Card>
             <SectionTitle>Afschrijving voertuigwaarde</SectionTitle>
             <ResponsiveContainer width="100%" height={220}>
@@ -1344,53 +2087,119 @@ export default function App() {
       {/* ══ TAB LEASE ══ */}
       {tab === "lease" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-          <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
-            <Card style={{ flex: 1, minWidth: 240 }}>
-              <SectionTitle>Lease parameters</SectionTitle>
-              <Row label="Cataloguswaarde" wide><input type="number" value={state.cataloguswaarde} onChange={e => set("cataloguswaarde", Number(e.target.value))} style={{ flex: 1 }} /></Row>
-              <Row label="Looptijd (mnd)"  wide><input type="number" value={state.leaseLooptijd}   onChange={e => set("leaseLooptijd",   Number(e.target.value))} style={{ flex: 1 }} /></Row>
-              <Row label="Km per jaar"     wide><input type="number" value={state.leaseKm}          onChange={e => set("leaseKm",          Number(e.target.value))} style={{ flex: 1 }} /></Row>
-              <Row label="Aanbetaling"     wide><input type="number" value={state.leaseAanbetaling} onChange={e => set("leaseAanbetaling", Number(e.target.value))} style={{ flex: 1 }} /></Row>
-              <Row label="Bijtelling (%)"  wide>
-                <select value={state.bijtellingPct} onChange={e => set("bijtellingPct", Number(e.target.value))} style={{ flex: 1 }}>
-                  <option value={16}>16% (volledig elektrisch)</option>
-                  <option value={22}>22% (standaard)</option>
-                  <option value={35}>35% (ouder dan 15 jaar)</option>
-                </select>
-              </Row>
-            </Card>
-            <Card style={{ flex: 1, minWidth: 240 }}>
-              <SectionTitle>Lease uitkomst (bruto)</SectionTitle>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ color: "#666", fontSize: 14 }}>Maandbedrag (schatting)</span>
-                  <span style={{ fontWeight: 600, fontSize: 20, color: COLORS.lease }}>{fmt(leasePrive)}</span>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                  <span style={{ color: "#999" }}>Totaal over {state.leaseLooptijd} mnd</span>
-                  <span style={{ fontWeight: 500 }}>{fmt(leasePrive * state.leaseLooptijd + state.leaseAanbetaling)}</span>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                  <span style={{ color: "#999" }}>Kosten per km</span>
-                  <span style={{ fontWeight: 500 }}>{fmtC(leaseKmKost)}/km</span>
-                </div>
-                <div style={{ borderTop: "0.5px solid #e8e6e0", paddingTop: 10, marginTop: 2 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
-                    <span style={{ color: "#999" }}>Bijtelling ({state.bijtellingPct}% van {fmt(state.cataloguswaarde)})</span>
-                    <span>{fmt(bijtellingMaand)}/mnd</span>
+
+          {/* Lease parameters — inklapbaar */}
+          <div style={{ background: "#fff", border: "0.5px solid #e0ddd8", borderRadius: 12, overflow: "hidden" }}>
+            <div onClick={() => setOpenLeaseParams(v => !v)}
+              style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 1.25rem", cursor: "pointer", userSelect: "none", background: openLeaseParams ? "#fff" : "#fafaf8" }}>
+              <span style={{ fontSize: 12, color: openLeaseParams ? COLORS.primary : "#bbb", transform: `rotate(${openLeaseParams ? 90 : 0}deg)`, display: "inline-block", transition: "transform 0.15s" }}>▶</span>
+              <span style={{ fontWeight: 500, fontSize: 14, flex: 1 }}>Lease parameters</span>
+              <span style={{ fontSize: 13, color: "#999" }}>{fmt(leasePrive)}/mnd · {state.leaseLooptijd || 48} mnd · {fmtN(state.leaseKm || 15000)} km/jr</span>
+            </div>
+            {openLeaseParams && (
+              <div style={{ padding: "0 1.25rem 1.25rem" }}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+                  {[
+                    { label: "Cataloguswaarde (€)", key: "cataloguswaarde", type: "number" },
+                    { label: "Looptijd (maanden)",  key: "leaseLooptijd",   type: "number" },
+                    { label: "Km per jaar",          key: "leaseKm",         type: "number" },
+                    { label: "Aanbetaling (€)",      key: "leaseAanbetaling",type: "number" },
+                  ].map(f => (
+                    <div key={f.key} style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 150px" }}>
+                      <label style={{ fontSize: 12, color: "#999" }}>{f.label}</label>
+                      <input type={f.type} value={state[f.key] ?? ""}
+                        onChange={e => set(f.key, Number(e.target.value))}
+                        style={{ width: "100%" }} />
+                    </div>
+                  ))}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 150px" }}>
+                    <label style={{ fontSize: 12, color: "#999" }}>Bijtelling (%)</label>
+                    <select value={state.bijtellingPct} onChange={e => set("bijtellingPct", Number(e.target.value))} style={{ width: "100%" }}>
+                      <option value={16}>16% — volledig elektrisch</option>
+                      <option value={22}>22% — standaard</option>
+                      <option value={35}>35% — ouder dan 15 jaar</option>
+                    </select>
                   </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
-                    <span style={{ color: "#999" }}>Belasting op bijtelling ({state.belastingschijf}%)</span>
-                    <span style={{ color: COLORS.danger }}>+ {fmt(bijtellingBelasting)}/mnd</span>
+                </div>
+
+                {/* Indexatie per periode */}
+                <div style={{ marginTop: 14, padding: "12px 14px", background: "#f7f6f2", borderRadius: 8 }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 6 }}>Indexatie bij nieuwe leaseperiode</div>
+                  <div style={{ fontSize: 13, color: "#666", marginBottom: 10, lineHeight: 1.6 }}>
+                    Na elke looptijd van {state.leaseLooptijd || 48} maanden wordt een nieuw leasecontract afgesloten.
+                    Stel hier in hoeveel duurder dat contract wordt — bijv. 10% stijging door inflatie en hogere catalogusprijzen.
+                    Dit wordt gebruikt in de cumulatieve grafiek zodat je een eerlijke vergelijking maakt over meerdere leaseperiodes.
                   </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, fontWeight: 600 }}>
-                    <span>Lease netto maandlast</span>
-                    <span style={{ color: COLORS.danger }}>{fmt(leaseMaandNetto)}</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <label style={{ fontSize: 12, color: "#999" }}>Stijging per periode (%)</label>
+                      <input type="number" step="1" placeholder="10" value={state.leaseStijgingPct ?? 10}
+                        onChange={e => set("leaseStijgingPct", Number(e.target.value))}
+                        style={{ width: 100 }} />
+                    </div>
+                    <div style={{ fontSize: 13, color: "#666", flex: 1 }}>
+                      {(() => {
+                        const mnd    = Number(state.leaseLooptijd) || 48;
+                        const pct    = (Number(state.leaseStijgingPct) || 10) / 100;
+                        const basis  = leasePrive;
+                        const p2     = Math.round(basis * (1 + pct));
+                        const p3     = Math.round(basis * Math.pow(1 + pct, 2));
+                        return (
+                          <span>
+                            Periode 1: <b>{fmt(basis)}/mnd</b>
+                            {" → "}Periode 2 (+{mnd} mnd): <b>{fmt(p2)}/mnd</b>
+                            {" → "}Periode 3: <b>{fmt(p3)}/mnd</b>
+                          </span>
+                        );
+                      })()}
+                    </div>
                   </div>
-                  <div style={{ fontSize: 12, color: "#bbb", marginTop: 4 }}>lease + belasting bijtelling, geen vergoedingen</div>
                 </div>
               </div>
-            </Card>
+            )}
+          </div>
+
+          {/* Lease uitkomst — inklapbaar */}
+          <div style={{ background: "#fff", border: "0.5px solid #e0ddd8", borderRadius: 12, overflow: "hidden" }}>
+            <div onClick={() => setOpenLeaseUitkomst(v => !v)}
+              style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 1.25rem", cursor: "pointer", userSelect: "none", background: openLeaseUitkomst ? "#fff" : "#fafaf8" }}>
+              <span style={{ fontSize: 12, color: openLeaseUitkomst ? COLORS.primary : "#bbb", transform: `rotate(${openLeaseUitkomst ? 90 : 0}deg)`, display: "inline-block", transition: "transform 0.15s" }}>▶</span>
+              <span style={{ fontWeight: 500, fontSize: 14, flex: 1 }}>Lease uitkomst (bruto)</span>
+              <span style={{ fontSize: 13, color: "#999" }}>netto: {fmt(leaseMaandNetto)}/mnd</span>
+            </div>
+            {openLeaseUitkomst && (
+              <div style={{ padding: "0 1.25rem 1.25rem" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span style={{ color: "#666", fontSize: 14 }}>Maandbedrag (schatting)</span>
+                    <span style={{ fontWeight: 600, fontSize: 20, color: COLORS.lease }}>{fmt(leasePrive)}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                    <span style={{ color: "#999" }}>Totaal over {state.leaseLooptijd} mnd</span>
+                    <span style={{ fontWeight: 500 }}>{fmt(leasePrive * state.leaseLooptijd + state.leaseAanbetaling)}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                    <span style={{ color: "#999" }}>Kosten per km</span>
+                    <span style={{ fontWeight: 500 }}>{fmtC(leaseKmKost)}/km</span>
+                  </div>
+                  <div style={{ borderTop: "0.5px solid #e8e6e0", paddingTop: 10, marginTop: 2 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
+                      <span style={{ color: "#999" }}>Bijtelling ({state.bijtellingPct}% van {fmt(state.cataloguswaarde)})</span>
+                      <span>{fmt(bijtellingMaand)}/mnd</span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
+                      <span style={{ color: "#999" }}>Belasting op bijtelling ({state.belastingschijf}%)</span>
+                      <span style={{ color: COLORS.danger }}>+ {fmt(bijtellingBelasting)}/mnd</span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, fontWeight: 600 }}>
+                      <span>Lease netto maandlast</span>
+                      <span style={{ color: COLORS.danger }}>{fmt(leaseMaandNetto)}</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: "#bbb", marginTop: 4 }}>lease + belasting bijtelling, geen vergoedingen</div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* ── Vergelijkingsperiode instellen ── */}
@@ -1401,21 +2210,20 @@ export default function App() {
 
             // ── Basis voor eigen auto kosten ──
             // Drie modi: laatste jaar, gemiddelde 5 jaar, handmatig startdatum
-            const vergModus = vergPeriodeStart.startsWith("__")
-              ? vergPeriodeStart  // "__lastjaar" of "__gem5"
+            const vergModus = vergPeriodeStart === "__lastjaar" ? "__lastjaar"
+              : vergPeriodeStart === "__gem5"     ? "__gem5"
+              : vergPeriodeStart === "tot_nu"     ? "tot_nu"
               : "handmatig";
 
             // Bereken gemiddelde maandkosten eigen auto op basis van modus
             const berekenEigenMaandKosten = () => {
               if (vergModus === "__lastjaar") {
-                // Volledig vorig kalenderjaar
                 const vorigjaar = String(nuJaar - 1);
                 const kp = alleKosten.filter(k => k.datum?.slice(0,4) === vorigjaar);
                 const tot = kp.reduce((s, k) => s + Number(k.bedrag), 0);
                 return { kostenMaand: tot / 12, bronLabel: `Kosten ${vorigjaar}`, aantalPosten: kp.length, bronJaren: 1 };
               }
               if (vergModus === "__gem5") {
-                // Gemiddelde laatste 5 volledig verlopen jaren (t/m vorig jaar)
                 const jaren = [];
                 for (let j = nuJaar - 1; j >= nuJaar - 5; j--) {
                   const vj = String(j);
@@ -1427,7 +2235,12 @@ export default function App() {
                 const aantalJaren = Math.max(jaren.length, 1);
                 return { kostenMaand: totBedrag / aantalJaren / 12, bronLabel: `Gemiddelde ${jaren.length > 0 ? jaren[jaren.length-1].jaar : ""}–${nuJaar-1}`, aantalPosten: totPosten, bronJaren: aantalJaren };
               }
-              // Handmatig: filter op basis van vergStartDt t/m vergEindeDt
+              if (vergModus === "tot_nu") {
+                const kp = alleKosten.filter(k => k.datum && k.datum <= nu.toISOString().slice(0,10));
+                const tot = kp.reduce((s, k) => s + Number(k.bedrag), 0);
+                return { kostenMaand: tot / Math.max(verlopenJaren * 12, 1), bronLabel: `Gemiddelde tot nu`, aantalPosten: kp.length, bronJaren: Math.max(verlopenJaren, 0.1) };
+              }
+              // Handmatig (legacy)
               const vergStartDt = new Date(vergPeriodeStart);
               const vergEindeDt = new Date(vergPeriodeStart);
               vergEindeDt.setMonth(vergEindeDt.getMonth() + looptijdMnd);
@@ -1452,19 +2265,25 @@ export default function App() {
 
             return (
               <Card>
-                <SectionTitle>Vergelijkingsbasis eigen auto</SectionTitle>
+                <div onClick={() => setOpenVerg(v => !v)} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", userSelect: "none", marginBottom: openVerg ? "1rem" : 0 }}>
+                  <span style={{ fontSize: 12, color: openVerg ? COLORS.primary : "#bbb", transform: `rotate(${openVerg ? 90 : 0}deg)`, display: "inline-block", transition: "transform 0.15s" }}>▶</span>
+                  <span style={{ fontWeight: 600, fontSize: 15, flex: 1 }}>Vergelijkingsbasis eigen auto</span>
+                  <span style={{ fontSize: 13, color: "#999" }}>{bronLabel} · {fmt(eigenKostenMaandPeriode)}/mnd</span>
+                </div>
+                {!openVerg ? null : (<>
 
-                {/* Modus-knoppen */}
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: "1rem" }}>
+                {/* Modus-knoppen — compact */}
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: "0.875rem", alignItems: "center" }}>
+                  <span style={{ fontSize: 12, color: "#bbb" }}>Basis:</span>
                   {[
-                    { id: "__lastjaar", label: `Laatste jaar (${nuJaar - 1})` },
-                    { id: "__gem5",     label: "Gemiddelde laatste 5 jaar" },
-                    { id: "handmatig", label: "Handmatig periode" },
+                    { id: "__lastjaar", label: `Vorig jaar (${nuJaar - 1})` },
+                    { id: "__gem5",     label: "Gem. 5 jaar" },
+                    { id: "tot_nu",     label: "Tot nu" },
                   ].map(m => (
                     <button key={m.id}
-                      onClick={() => setVergPeriodeStart(m.id === "handmatig" ? new Date().toISOString().slice(0,10) : m.id)}
+                      onClick={() => setVergPeriodeStart(m.id)}
                       style={{
-                        padding: "6px 14px", fontSize: 13, borderRadius: 20,
+                        padding: "4px 12px", fontSize: 12, borderRadius: 20,
                         border: vergModus === m.id ? `1.5px solid ${COLORS.primary}` : "0.5px solid #e0ddd8",
                         background: vergModus === m.id ? COLORS.primary : "#fff",
                         color: vergModus === m.id ? "#fff" : "#666",
@@ -1473,29 +2292,15 @@ export default function App() {
                   ))}
                 </div>
 
-                {/* Handmatige startdatum (alleen tonen als handmatig gekozen) */}
-                {vergModus === "handmatig" && (
-                  <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: "1rem", padding: "10px 14px", background: "#f7f6f2", borderRadius: 8, flexWrap: "wrap" }}>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                      <label style={{ fontSize: 12, color: "#999" }}>Startdatum</label>
-                      <input type="date" value={vergPeriodeStart} onChange={e => setVergPeriodeStart(e.target.value)} style={{ width: 150 }} />
-                    </div>
-                    <div style={{ fontSize: 13, color: "#888" }}>
-                      t/m {(() => { const d = new Date(vergPeriodeStart); d.setMonth(d.getMonth() + looptijdMnd); return d.toLocaleDateString("nl-NL", { month: "short", year: "numeric" }); })()}
-                      <span style={{ color: "#bbb", marginLeft: 8 }}>({looptijdMnd} mnd)</span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Samenvatting basis */}
-                <div style={{ padding: "10px 14px", background: "#f0f4f8", borderRadius: 8, marginBottom: "1.25rem", fontSize: 13 }}>
-                  <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "center" }}>
-                    <span style={{ fontWeight: 500 }}>Basis: {bronLabel}</span>
-                    <span style={{ color: "#888" }}>{aantalPosten} posten · {bronJaren.toFixed(1)} jaar</span>
-                    <span>Kosten: <b>{fmt(kostenMaand)}/mnd</b></span>
-                    <span>+ Afschrijving: <b>{fmt(afschrMaandPeriode)}/mnd</b></span>
-                    <span style={{ fontWeight: 600, color: COLORS.primary }}>= Bruto: {fmt(eigenKostenMaandPeriode)}/mnd</span>
-                  </div>
+                {/* Compacte samenvatting */}
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: "1.25rem", padding: "8px 12px", background: "#f0f4f8", borderRadius: 8, fontSize: 12, alignItems: "center" }}>
+                  <span style={{ color: "#888" }}>{bronLabel} · {aantalPosten} posten · {bronJaren.toFixed(1)} jr</span>
+                  <span style={{ color: "#bbb" }}>|</span>
+                  <span>Kosten: <b>{fmt(kostenMaand)}/mnd</b></span>
+                  <span style={{ color: "#bbb" }}>+</span>
+                  <span>Afschr: <b>{fmt(afschrMaandPeriode)}/mnd</b></span>
+                  <span style={{ color: "#bbb" }}>=</span>
+                  <span style={{ fontWeight: 600, color: COLORS.primary }}>Bruto: {fmt(eigenKostenMaandPeriode)}/mnd</span>
                 </div>
 
                 {/* Drie kolommen: eigen auto, zakelijk lease, privé lease */}
@@ -1747,6 +2552,7 @@ export default function App() {
                   ⓘ Eigen auto kosten zijn gebaseerd op {bronLabel} ({aantalPosten} posten), aangevuld met gemiddelde afschrijving.
                   Lease is een schatting — vraag altijd een offerte op. Belastingschijf: {state.belastingschijf}%.
                 </div>
+                </>)}
               </Card>
             );
           })()}
@@ -1800,6 +2606,15 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* ══ FOOTER ══ */}
+      <div style={{ marginTop: "3rem", paddingTop: "1rem", borderTop: "0.5px solid #e0ddd8", display: "flex", gap: 16, flexWrap: "wrap", fontSize: 12, color: "#bbb", alignItems: "center" }}>
+        <span>AutoKosten {APP_VERSION}</span>
+        <a href="/AutoKosten/privacy.html" style={{ color: "#1B4F72", textDecoration: "none" }}>Privacy</a>
+        <a href="/AutoKosten/disclaimer.html" style={{ color: "#1B4F72", textDecoration: "none" }}>Disclaimer</a>
+        <a href="/AutoKosten/help.html" style={{ color: "#1B4F72", textDecoration: "none" }}>Help</a>
+        <span style={{ marginLeft: "auto", fontSize: 11 }}>Lokale opslag · geen server · geen cloud</span>
+      </div>
     </div>
   );
 }
