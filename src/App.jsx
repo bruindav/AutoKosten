@@ -1,4 +1,4 @@
-// AutoKosten v2 fix34
+// AutoKosten v2 fix36
 // Multi-auto: meerdere auto-profielen, switchen via header
 
 import { useState, useEffect } from "react";
@@ -7,7 +7,7 @@ import {
   Tooltip, Legend, ResponsiveContainer, ReferenceLine, PieChart, Pie, Cell
 } from "recharts";
 
-const APP_VERSION = "v2 fix34";
+const APP_VERSION = "v2 fix36";
 const STORAGE_KEY = "autokosten_v3_multi";
 
 const COLORS = {
@@ -207,6 +207,7 @@ function defaultState() {
     leaseLooptijd: 48, leaseKm: 15000, leaseAanbetaling: 0,
     leaseStijgingPct: 10,
     leaseBedragHandmatig: null,
+    leasePriveBedragHandmatig: null,
     gemiddeldVerbruik: "",
     tankLiter: null,
     kmPerTank: null,
@@ -674,7 +675,8 @@ export default function App() {
   const eigenMaand     = (totaalKosten + afschrJaar) / Math.max(verlopenJaren * 12, 1);
 
   const leasePriveBerekend = berekenLeasePrive(state.cataloguswaarde, state.leaseLooptijd, state.leaseKm, state.leaseAanbetaling);
-  const leasePrive  = state.leaseBedragHandmatig ? Number(state.leaseBedragHandmatig) : leasePriveBerekend;
+  const leasePrive     = state.leaseBedragHandmatig ? Number(state.leaseBedragHandmatig) : leasePriveBerekend;
+  const leasePrivePrive = state.leasePriveBedragHandmatig ? Number(state.leasePriveBedragHandmatig) : leasePrive;
   const leaseKmKost = (leasePrive * state.leaseLooptijd + state.leaseAanbetaling) / (state.leaseKm * state.leaseLooptijd / 12);
 
   // ── Vergoedingen berekening ──
@@ -721,6 +723,19 @@ export default function App() {
 
   // Gewogen gemiddelde over volledige bezitsperiode (voor uitkomst-kaart)
   const leaseGemiddeldOverPeriode = berekenLeaseGemiddeld(Math.round(bezitsjaren * 12));
+
+  // Aparte versie voor privé lease (andere basisprijs)
+  const berekenLeaseGemiddeldPriv = (aantalMaanden) => {
+    const looptijdMnd = Number(state.leaseLooptijd) || 48;
+    const stijging    = Number(state.leaseStijgingPct || 10) / 100;
+    let totaalBedrag  = 0;
+    for (let mnd = 0; mnd < aantalMaanden; mnd++) {
+      const periodeNr  = Math.floor(mnd / looptijdMnd);
+      const maandprijs = Math.round(leasePrivePrive * Math.pow(1 + stijging, periodeNr));
+      totaalBedrag += maandprijs;
+    }
+    return aantalMaanden > 0 ? Math.round(totaalBedrag / aantalMaanden) : leasePrivePrive;
+  };
 
   // Lease-periodes tabel voor uitleg (volledige bezitsperiode)
   const leasePeriodesTabel = (() => {
@@ -2149,7 +2164,7 @@ export default function App() {
                   ))}
                   {/* Handmatig leasebedrag 1e periode */}
                   <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 150px" }}>
-                    <label style={{ fontSize: 12, color: "#999" }}>Leasebedrag 1e periode (€/mnd)</label>
+                    <label style={{ fontSize: 12, color: "#999" }}>Zakelijk lease 1e periode (€/mnd)</label>
                     <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                       <input type="number" placeholder={`schatting: ${leasePriveBerekend}`}
                         value={state.leaseBedragHandmatig || ""}
@@ -2162,6 +2177,23 @@ export default function App() {
                     </div>
                     <div style={{ fontSize: 11, color: state.leaseBedragHandmatig ? COLORS.primary : "#bbb" }}>
                       {state.leaseBedragHandmatig ? `Handmatig: ${fmt(leasePrive)}/mnd` : `Schatting: ${fmt(leasePriveBerekend)}/mnd`}
+                    </div>
+                  </div>
+                  {/* Privé leasebedrag handmatig */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 150px" }}>
+                    <label style={{ fontSize: 12, color: "#999" }}>Privé lease 1e periode (€/mnd)</label>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                      <input type="number" placeholder={`zelfde als zakelijk: ${leasePrive}`}
+                        value={state.leasePriveBedragHandmatig || ""}
+                        onChange={e => set("leasePriveBedragHandmatig", e.target.value ? Number(e.target.value) : null)}
+                        style={{ flex: 1 }} />
+                      {state.leasePriveBedragHandmatig && (
+                        <button onClick={() => set("leasePriveBedragHandmatig", null)}
+                          style={{ fontSize: 11, background: "none", border: "0.5px solid #ccc", borderRadius: 4, padding: "4px 8px", cursor: "pointer", color: "#999" }}>✕</button>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 11, color: state.leasePriveBedragHandmatig ? COLORS.lease : "#bbb" }}>
+                      {state.leasePriveBedragHandmatig ? `Handmatig: ${fmt(leasePrivePrive)}/mnd` : `Zelfde als zakelijk: ${fmt(leasePrive)}/mnd`}
                     </div>
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 150px" }}>
@@ -2222,6 +2254,30 @@ export default function App() {
             {openLeaseUitkomst && (
               <div style={{ padding: "0 1.25rem 1.25rem" }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 12 }}>
+
+                  {/* Periode-keuze — bepaalt vergelijkingsperiode voor leasegemiddelde */}
+                  <div style={{ background: "#f0f4ff", borderRadius: 8, padding: "10px 14px" }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "#1B4F72", marginBottom: 8 }}>
+                      Vergelijkingsperiode — bepaalt de basis voor eigen auto én het gewogen leasegemiddelde
+                    </div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {[
+                        { id: "__lastjaar", label: `Vorig jaar (${nu.getFullYear() - 1})` },
+                        { id: "__gem5",     label: "Gem. 5 jaar" },
+                        { id: "tot_nu",     label: "Tot nu (volledig bezit)" },
+                      ].map(m => (
+                        <button key={m.id}
+                          onClick={() => setVergPeriodeStart(m.id)}
+                          style={{
+                            padding: "5px 14px", fontSize: 12, borderRadius: 20,
+                            border: vergModus === m.id ? `1.5px solid ${COLORS.primary}` : "0.5px solid #e0ddd8",
+                            background: vergModus === m.id ? COLORS.primary : "#fff",
+                            color: vergModus === m.id ? "#fff" : "#666",
+                            cursor: "pointer", fontWeight: vergModus === m.id ? 600 : 400,
+                          }}>{m.label}</button>
+                      ))}
+                    </div>
+                  </div>
 
                   {/* Periodes tabel */}
                   <div>
@@ -2360,34 +2416,11 @@ export default function App() {
                 </div>
                 {!openVerg ? null : (<>
 
-                {/* Periode-keuze bovenaan — bepaalt zowel eigen auto basis als leasegemiddelde */}
-                <div style={{ background: "#f7f6f2", borderRadius: 8, padding: "10px 14px", marginBottom: "1rem" }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: "#666", marginBottom: 8 }}>
-                    Vergelijkingsperiode — bepaalt de basis voor eigen auto én het gewogen leasegemiddelde
-                  </div>
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                    {[
-                      { id: "__lastjaar", label: `Vorig jaar (${nuJaar - 1})` },
-                      { id: "__gem5",     label: "Gem. 5 jaar" },
-                      { id: "tot_nu",     label: "Tot nu (volledige bezit)" },
-                    ].map(m => (
-                      <button key={m.id}
-                        onClick={() => setVergPeriodeStart(m.id)}
-                        style={{
-                          padding: "5px 14px", fontSize: 12, borderRadius: 20,
-                          border: vergModus === m.id ? `1.5px solid ${COLORS.primary}` : "0.5px solid #e0ddd8",
-                          background: vergModus === m.id ? COLORS.primary : "#fff",
-                          color: vergModus === m.id ? "#fff" : "#666",
-                          cursor: "pointer", fontWeight: vergModus === m.id ? 600 : 400,
-                        }}>{m.label}</button>
-                    ))}
-                  </div>
-                </div>
-
                 {/* Compacte samenvatting */}
                 {(() => {
                   const vergMaanden = Math.round(bronJaren * 12);
-                  const leaseGemVergperiode = berekenLeaseGemiddeld(vergMaanden);
+                  const leaseGemVergperiode     = berekenLeaseGemiddeld(vergMaanden);
+                  const leaseGemVergperiodePriv = berekenLeaseGemiddeldPriv(vergMaanden);
                   return (
                     <>
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: "1.25rem", padding: "8px 12px", background: "#f0f4f8", borderRadius: 8, fontSize: 12, alignItems: "center" }}>
@@ -2412,16 +2445,16 @@ export default function App() {
 
                   const zakVast      = leaseGemVergperiode; // gewogen gem. over vergelijkingsperiode
                   const zakVar       = 0;
-                  const zakTotK      = zakVast + zakVar;
+                  const zakBijtelling= bijtellingBelasting;
+                  const zakTotK      = zakVast + zakVar + zakBijtelling; // bijtelling zit in kosten
                   const zakVergVast  = mobBrutoMaand;
                   const zakVergVar   = 0;
-                  const zakBijtelling= bijtellingBelasting;
                   const zakTotV      = zakVergVast;
-                  const zakSaldo     = zakTotK - zakTotV + zakBijtelling;
+                  const zakSaldo     = zakTotK - zakTotV;
                   const zakNetto     = Math.max(zakSaldo, 0);
                   const zakVoordeel  = 0;
 
-                  const privVast     = leaseGemVergperiode; // gewogen gem. over vergelijkingsperiode
+                  const privVast     = leaseGemVergperiodePriv; // gewogen gem. privé over vergelijkingsperiode
                   const privVar      = 0;
                   const privTotK     = privVast + privVar;
                   const privVergVast = mobNettoMaand;
@@ -2529,6 +2562,10 @@ export default function App() {
                               vals={[eigenVar, zakVar || "—", privVar || "—"]}
                               kleur={COLORS.danger} indent
                               sub={zakVar === 0 ? "(zakelijk lease: later toe te voegen)" : ""} />
+                            <DataRij label="Bijtelling belasting"
+                              vals={[null, zakBijtelling, null]}
+                              kleur={COLORS.danger} indent
+                              sub={`${state.bijtellingPct}% × ${state.belastingschijf}%`} />
                           </>
                         )}
                         <TotaalRij label="Totaal kosten" vals={cols.map(c => c.totK)} color={COLORS.danger} />
@@ -2544,10 +2581,6 @@ export default function App() {
                             <DataRij label="Variabel (km-vergoeding)"
                               vals={[eigenVergVar, null, privVergVar]}
                               kleur={COLORS.success} indent />
-                            <DataRij label="Bijtelling belasting"
-                              vals={[null, zakBijtelling, null]}
-                              kleur={COLORS.danger} indent
-                              sub={`${state.bijtellingPct}% × ${state.belastingschijf}%`} />
                           </>
                         )}
                         <TotaalRij label="Totaal vergoedingen (saldo)"
