@@ -1,4 +1,4 @@
-// AutoKosten v2 fix38
+// AutoKosten v2 fix40
 // Multi-auto: meerdere auto-profielen, switchen via header
 
 import { useState, useEffect } from "react";
@@ -7,7 +7,7 @@ import {
   Tooltip, Legend, ResponsiveContainer, ReferenceLine, PieChart, Pie, Cell
 } from "recharts";
 
-const APP_VERSION = "v2 fix38";
+const APP_VERSION = "v2 fix40";
 const STORAGE_KEY = "autokosten_v3_multi";
 
 const COLORS = {
@@ -893,9 +893,11 @@ export default function App() {
           {state.bouwjaar && <div style={{ fontSize: 13, color: "#999", marginTop: 2 }}>{state.bouwjaar} · {state.brandstof} · {state.kenteken}{state.gewichtKg ? ` · ${fmtN(state.gewichtKg)} kg` : ""}{(state.huidigeKmStand || latestKmStand) ? ` · ${fmtN(state.huidigeKmStand || latestKmStand)} km` : ""}</div>}
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", width: "100%" }}>
-          <MetricCard label="Totaalkosten"  value={fmt(totaalKosten + totaleAfschr)} sub="incl. afschrijving" />
+          <MetricCard label="Totaalkosten"  value={fmt(totaalKosten + totaleAfschr)} sub="incl. afschrijving · alle posten" />
           <MetricCard label="Per maand"     value={fmt(eigenMaand)}  sub="incl. afschr." color={COLORS.accent} />
-          <MetricCard label="Per km"        value={fmtC(kmTotaal)}   sub="vast + variabel" color={COLORS.primary} />
+          <MetricCard label="Per km"        value={fmtC(kmTotaal)}
+            sub={`alle posten ÷ ${fmtN(Math.round(geredenKm))} km (${verlopenJaren.toFixed(1)} jr × ${fmtN(state.jaarlijkseKm)} km/jr)`}
+            color={COLORS.primary} />
         </div>
       </div>
 
@@ -1633,7 +1635,7 @@ export default function App() {
             // Km voor periode
             const kmVoorPeriode = (periode) => {
               if (periode === "tot_nu")      return Math.max(state.jaarlijkseKm * verlopenJaren, 1);
-              if (periode === "tot_verkoop") return Math.max(state.jaarlijkseKm * bezitsjaren, 1);
+              if (periode === "tot_verkoop") return Math.max(state.jaarlijkseKm * bezitsjaren, 1); // incl. toekomstige km
               const jaarNum = Number(periode);
               const start   = new Date(Math.max(aankoopDt, new Date(jaarNum, 0, 1)));
               const einde   = new Date(Math.min(verkoopDt, new Date(jaarNum, 11, 31)));
@@ -1685,7 +1687,12 @@ export default function App() {
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: "1.25rem" }}>
                   <MetricCard label="Kosten"      value={fmt(totKp)}    sub={`${kp.length} posten`} />
                   <MetricCard label="Afschrijving" value={fmt(afschrKp)} sub="in deze periode" />
-                  <MetricCard label="Km gereden"   value={fmtN(kmKp)}    sub="geschat" />
+                  <MetricCard label="Km gereden"   value={fmtN(kmKp)}
+                    sub={sel === "tot_nu"
+                      ? `${verlopenJaren.toFixed(1)} jr × ${fmtN(state.jaarlijkseKm)} km/jr`
+                      : sel === "tot_verkoop"
+                      ? `${bezitsjaren.toFixed(1)} jr × ${fmtN(state.jaarlijkseKm)} (incl. toekomstig)`
+                      : `${sel} (jaarschatting)`} />
                   <MetricCard label="Totaal/mnd"   value={fmt((totKp + afschrKp) / Math.max(
                     sel === "tot_nu" ? verlopenJaren * 12 :
                     sel === "tot_verkoop" ? bezitsjaren * 12 : 12, 1))}
@@ -1733,7 +1740,13 @@ export default function App() {
                         </div>
                       </div>
                     ))}
-                    <div style={{ fontSize: 12, color: "#bbb", marginTop: 4 }}>{fmtN(kmKp)} km in periode</div>
+                    <div style={{ fontSize: 12, color: "#bbb", marginTop: 4 }}>
+                      {fmtN(kmKp)} km · {sel === "tot_nu"
+                        ? `${verlopenJaren.toFixed(1)} jr × ${fmtN(state.jaarlijkseKm)} km/jr (zelfde als header)`
+                        : sel === "tot_verkoop"
+                        ? `${bezitsjaren.toFixed(1)} jr × ${fmtN(state.jaarlijkseKm)} km/jr incl. toekomstig (daardoor lager dan header)`
+                        : `schatting voor ${sel}`}
+                    </div>
                   </div>
                 </div>
               </Card>
