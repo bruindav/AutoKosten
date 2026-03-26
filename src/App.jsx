@@ -1,4 +1,4 @@
-// AutoKosten v2 fix16
+// AutoKosten v2 fix34
 // Multi-auto: meerdere auto-profielen, switchen via header
 
 import { useState, useEffect } from "react";
@@ -7,7 +7,7 @@ import {
   Tooltip, Legend, ResponsiveContainer, ReferenceLine, PieChart, Pie, Cell
 } from "recharts";
 
-const APP_VERSION = "v2 fix16";
+const APP_VERSION = "v2 fix34";
 const STORAGE_KEY = "autokosten_v3_multi";
 
 const COLORS = {
@@ -206,6 +206,7 @@ function defaultState() {
     jaarlijkseKm: 15000, cataloguswaarde: 30000,
     leaseLooptijd: 48, leaseKm: 15000, leaseAanbetaling: 0,
     leaseStijgingPct: 10,
+    leaseBedragHandmatig: null,
     gemiddeldVerbruik: "",
     tankLiter: null,
     kmPerTank: null,
@@ -672,7 +673,8 @@ export default function App() {
   const kmTotaal       = (totaalKosten + totaleAfschr) / geredenKm;
   const eigenMaand     = (totaalKosten + afschrJaar) / Math.max(verlopenJaren * 12, 1);
 
-  const leasePrive  = berekenLeasePrive(state.cataloguswaarde, state.leaseLooptijd, state.leaseKm, state.leaseAanbetaling);
+  const leasePriveBerekend = berekenLeasePrive(state.cataloguswaarde, state.leaseLooptijd, state.leaseKm, state.leaseAanbetaling);
+  const leasePrive  = state.leaseBedragHandmatig ? Number(state.leaseBedragHandmatig) : leasePriveBerekend;
   const leaseKmKost = (leasePrive * state.leaseLooptijd + state.leaseAanbetaling) / (state.leaseKm * state.leaseLooptijd / 12);
 
   // ── Vergoedingen berekening ──
@@ -2144,6 +2146,23 @@ export default function App() {
                         style={{ width: "100%" }} />
                     </div>
                   ))}
+                  {/* Handmatig leasebedrag 1e periode */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 150px" }}>
+                    <label style={{ fontSize: 12, color: "#999" }}>Leasebedrag 1e periode (€/mnd)</label>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                      <input type="number" placeholder={`schatting: ${leasePriveBerekend}`}
+                        value={state.leaseBedragHandmatig || ""}
+                        onChange={e => set("leaseBedragHandmatig", e.target.value ? Number(e.target.value) : null)}
+                        style={{ flex: 1 }} />
+                      {state.leaseBedragHandmatig && (
+                        <button onClick={() => set("leaseBedragHandmatig", null)}
+                          style={{ fontSize: 11, background: "none", border: "0.5px solid #ccc", borderRadius: 4, padding: "4px 8px", cursor: "pointer", color: "#999" }}>✕</button>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 11, color: state.leaseBedragHandmatig ? COLORS.primary : "#bbb" }}>
+                      {state.leaseBedragHandmatig ? `Handmatig: ${fmt(leasePrive)}/mnd` : `Schatting: ${fmt(leasePriveBerekend)}/mnd`}
+                    </div>
+                  </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 150px" }}>
                     <label style={{ fontSize: 12, color: "#999" }}>Bijtelling (%)</label>
                     <select value={state.bijtellingPct} onChange={e => set("bijtellingPct", Number(e.target.value))} style={{ width: "100%" }}>
@@ -2384,19 +2403,19 @@ export default function App() {
                   const eigenNetto   = Math.max(eigenSaldo, 0);
                   const eigenVoordeel= eigenSaldo < 0 ? Math.abs(eigenSaldo) : 0;
 
-                  const zakVast      = leasePrive;       // lease all-in is vast
-                  const zakVar       = 0;                // placeholder (later toevoegen)
+                  const zakVast      = leaseGemiddeldOverPeriode; // gewogen gem. over bezitsperiode
+                  const zakVar       = 0;
                   const zakTotK      = zakVast + zakVar;
-                  const zakVergVast  = mobBrutoMaand;    // bruto aftrek
-                  const zakVergVar   = 0;                // km-verg vervalt
+                  const zakVergVast  = mobBrutoMaand;
+                  const zakVergVar   = 0;
                   const zakBijtelling= bijtellingBelasting;
                   const zakTotV      = zakVergVast;
                   const zakSaldo     = zakTotK - zakTotV + zakBijtelling;
                   const zakNetto     = Math.max(zakSaldo, 0);
                   const zakVoordeel  = 0;
 
-                  const privVast     = leasePrive;
-                  const privVar      = 0;                // placeholder
+                  const privVast     = leaseGemiddeldOverPeriode; // gewogen gem. over bezitsperiode
+                  const privVar      = 0;
                   const privTotK     = privVast + privVar;
                   const privVergVast = mobNettoMaand;
                   const privVergVar  = kmVergNetto;
