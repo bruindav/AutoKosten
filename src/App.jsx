@@ -635,6 +635,8 @@ export default function App() {
     const start = new Date(state.aankoopdatum);
     const einde = new Date(state.verwachteVerkoopdatum);
     const posten = [];
+    const bf3      = (state.brandstof || "").toLowerCase();
+    const bfLabel  = bf3.includes("elektr") ? "Stroom" : bf3.includes("diesel") ? "Diesel" : bf3.includes("lpg") ? "LPG" : "Benzine";
     for (let j = start.getFullYear(); j <= einde.getFullYear(); j++) {
       const prijs = cbsPrijzen[j];
       if (!prijs) continue;
@@ -645,7 +647,7 @@ export default function App() {
         categorie: "brandstof",
         bedrag,
         km: null,
-        omschrijving: `Brandstof ${j} (CBS €${prijs.toFixed(2).replace(".",",")} /l)`,
+        omschrijving: `${bfLabel} ${j} (CBS €${prijs.toFixed(2).replace(".",",")} /l)`,
         automatisch: true,
         type: "brandstof",
       });
@@ -1001,21 +1003,39 @@ export default function App() {
 
                     {/* Ophaal knop */}
                     <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
+                      {/* Toon herkend brandstoftype */}
+                      {(() => {
+                        const bf2 = (state.brandstof || "").toLowerCase();
+                        const isElek  = bf2.includes("elektr");
+                        const isHybr  = bf2.includes("hybride") || bf2.includes("plug");
+                        const isDiesel= bf2.includes("diesel");
+                        const isLpg   = bf2.includes("lpg") || bf2.includes("autogas");
+                        const label   = isElek ? "⚡ Elektriciteit" : isDiesel ? "🛢 Diesel" : isLpg ? "🔵 LPG" : isHybr ? "🔋 Hybride (benzine)" : "⛽ Benzine";
+                        const cbsNota = isElek ? "CBS 84991NED kwartaalstroom" : isDiesel ? "CBS 81567NED diesel, niet-snelweg" : isLpg ? "CBS 81567NED LPG, niet-snelweg" : "CBS 81567NED benzine E95, niet-snelweg";
+                        return (
+                          <div style={{ fontSize: 12, color: "#666", background: "#f7f6f2", borderRadius: 6, padding: "5px 10px", marginBottom: 4 }}>
+                            {label} · <span style={{ color: "#bbb" }}>{cbsNota}</span>
+                          </div>
+                        );
+                      })()}
                       <button
                         onClick={async () => {
                           set("cbsLaden", true);
                           try {
                             const bf2 = (state.brandstof || "").toLowerCase();
-                            // 81567NED: maandprijzen; Locatie 3=niet-snelweg; BrandstofSoort: 1=benzine, 2=diesel
-                            // Voor stroom: kwartaalset 84991NED, soort 5
-                            const isElek = bf2.includes("elektr");
-                            const soortNr = isElek ? "5" : bf2.includes("diesel") ? "2" : "1";
-                            const dataset = isElek ? "84991NED" : "81567NED";
+                            // Herken brandstoftype op basis van RDW omschrijving
+                            // CBS 81567NED BrandstofSoort: 1=benzine E95, 2=diesel, 3=LPG, 4=andere, 5=elektriciteit(n.v.t.)
+                            // CBS 84991NED BrandstofSoort: 1=benzine, 2=diesel, 3=lpg, 5=elektriciteit (kwartaalset)
+                            const isElek   = bf2.includes("elektr");
+                            const isDiesel = bf2.includes("diesel");
+                            const isLpg    = bf2.includes("lpg") || bf2.includes("autogas");
+                            // Hybride rijdt op benzine voor brandstofkosten
+                            const soortNr  = isElek ? "5" : isDiesel ? "2" : isLpg ? "3" : "1";
+                            const dataset  = isElek ? "84991NED" : "81567NED";
                             const locFilter = isElek ? "" : " and Locatie eq '3'";
                             const startJr = aankoopDt.getFullYear();
                             const eindJr  = Math.min(verkoopDt.getFullYear(), new Date().getFullYear());
 
-                            // Haal alle maanden op van aankoopdatum tot nu
                             const url = `https://opendata.cbs.nl/ODataApi/OData/${dataset}/TypedDataSet?$filter=BrandstofSoort eq '${soortNr}'${locFilter}&$select=Perioden,GemiddeldePompprijs_1&$orderby=Perioden`;
                             const res = await fetch(url);
                             const json = await res.json();
