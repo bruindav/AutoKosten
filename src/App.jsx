@@ -706,28 +706,29 @@ export default function App() {
   // Lease: maandbedrag + belasting op bijtelling - geen vergoedingen
   const leaseMaandNetto     = leasePrive + bijtellingBelasting;
 
-  // Gewogen gemiddeld leasebedrag over alle periodes in de bezitsperiode
-  const leaseGemiddeldOverPeriode = (() => {
-    const totaleMaanden = Math.round(bezitsjaren * 12);
-    const looptijdMnd   = Number(state.leaseLooptijd) || 48;
-    const stijging      = Number(state.leaseStijgingPct || 10) / 100;
-    let totaalBedrag = 0;
-    for (let mnd = 0; mnd < totaleMaanden; mnd++) {
+  // Gewogen gemiddeld leasebedrag over een gegeven aantal maanden
+  const berekenLeaseGemiddeld = (aantalMaanden) => {
+    const looptijdMnd = Number(state.leaseLooptijd) || 48;
+    const stijging    = Number(state.leaseStijgingPct || 10) / 100;
+    let totaalBedrag  = 0;
+    for (let mnd = 0; mnd < aantalMaanden; mnd++) {
       const periodeNr  = Math.floor(mnd / looptijdMnd);
       const maandprijs = Math.round(leasePrive * Math.pow(1 + stijging, periodeNr));
       totaalBedrag += maandprijs;
     }
-    return totaleMaanden > 0 ? Math.round(totaalBedrag / totaleMaanden) : leasePrive;
-  })();
+    return aantalMaanden > 0 ? Math.round(totaalBedrag / aantalMaanden) : leasePrive;
+  };
 
-  // Lease-periodes tabel voor uitleg
+  // Gewogen gemiddelde over volledige bezitsperiode (voor uitkomst-kaart)
+  const leaseGemiddeldOverPeriode = berekenLeaseGemiddeld(Math.round(bezitsjaren * 12));
+
+  // Lease-periodes tabel voor uitleg (volledige bezitsperiode)
   const leasePeriodesTabel = (() => {
     const totaleMaanden = Math.round(bezitsjaren * 12);
     const looptijdMnd   = Number(state.leaseLooptijd) || 48;
     const stijging      = Number(state.leaseStijgingPct || 10) / 100;
     const periodes = [];
-    let mnd = 0;
-    let periodeNr = 0;
+    let mnd = 0, periodeNr = 0;
     while (mnd < totaleMaanden) {
       const maandprijs = Math.round(leasePrive * Math.pow(1 + stijging, periodeNr));
       const duur = Math.min(looptijdMnd, totaleMaanden - mnd);
@@ -2215,7 +2216,7 @@ export default function App() {
             <div onClick={() => setOpenLeaseUitkomst(v => !v)}
               style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 1.25rem", cursor: "pointer", userSelect: "none", background: openLeaseUitkomst ? "#fff" : "#fafaf8" }}>
               <span style={{ fontSize: 12, color: openLeaseUitkomst ? COLORS.primary : "#bbb", transform: `rotate(${openLeaseUitkomst ? 90 : 0}deg)`, display: "inline-block", transition: "transform 0.15s" }}>▶</span>
-              <span style={{ fontWeight: 500, fontSize: 14, flex: 1 }}>Lease uitkomst (bruto)</span>
+              <span style={{ fontWeight: 500, fontSize: 14, flex: 1 }}>Berekening gemiddelde leaseprijs</span>
               <span style={{ fontSize: 13, color: "#999" }}>gem. {fmt(leaseGemiddeldOverPeriode)}/mnd over {bezitsjaren.toFixed(1)} jaar</span>
             </div>
             {openLeaseUitkomst && (
@@ -2354,45 +2355,51 @@ export default function App() {
               <Card>
                 <div onClick={() => setOpenVerg(v => !v)} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", userSelect: "none", marginBottom: openVerg ? "1rem" : 0 }}>
                   <span style={{ fontSize: 12, color: openVerg ? COLORS.primary : "#bbb", transform: `rotate(${openVerg ? 90 : 0}deg)`, display: "inline-block", transition: "transform 0.15s" }}>▶</span>
-                  <span style={{ fontWeight: 600, fontSize: 15, flex: 1 }}>Vergelijkingsbasis eigen auto</span>
+                  <span style={{ fontWeight: 600, fontSize: 15, flex: 1 }}>Vergelijking eigen auto met leaseauto</span>
                   <span style={{ fontSize: 13, color: "#999" }}>{bronLabel} · {fmt(eigenKostenMaandPeriode)}/mnd</span>
                 </div>
                 {!openVerg ? null : (<>
 
-                {/* Modus-knoppen — compact */}
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: "0.875rem", alignItems: "center" }}>
-                  <span style={{ fontSize: 12, color: "#bbb" }}>Basis:</span>
-                  {[
-                    { id: "__lastjaar", label: `Vorig jaar (${nuJaar - 1})` },
-                    { id: "__gem5",     label: "Gem. 5 jaar" },
-                    { id: "tot_nu",     label: "Tot nu" },
-                  ].map(m => (
-                    <button key={m.id}
-                      onClick={() => setVergPeriodeStart(m.id)}
-                      style={{
-                        padding: "4px 12px", fontSize: 12, borderRadius: 20,
-                        border: vergModus === m.id ? `1.5px solid ${COLORS.primary}` : "0.5px solid #e0ddd8",
-                        background: vergModus === m.id ? COLORS.primary : "#fff",
-                        color: vergModus === m.id ? "#fff" : "#666",
-                        cursor: "pointer", fontWeight: vergModus === m.id ? 600 : 400,
-                      }}>{m.label}</button>
-                  ))}
+                {/* Periode-keuze bovenaan — bepaalt zowel eigen auto basis als leasegemiddelde */}
+                <div style={{ background: "#f7f6f2", borderRadius: 8, padding: "10px 14px", marginBottom: "1rem" }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "#666", marginBottom: 8 }}>
+                    Vergelijkingsperiode — bepaalt de basis voor eigen auto én het gewogen leasegemiddelde
+                  </div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                    {[
+                      { id: "__lastjaar", label: `Vorig jaar (${nuJaar - 1})` },
+                      { id: "__gem5",     label: "Gem. 5 jaar" },
+                      { id: "tot_nu",     label: "Tot nu (volledige bezit)" },
+                    ].map(m => (
+                      <button key={m.id}
+                        onClick={() => setVergPeriodeStart(m.id)}
+                        style={{
+                          padding: "5px 14px", fontSize: 12, borderRadius: 20,
+                          border: vergModus === m.id ? `1.5px solid ${COLORS.primary}` : "0.5px solid #e0ddd8",
+                          background: vergModus === m.id ? COLORS.primary : "#fff",
+                          color: vergModus === m.id ? "#fff" : "#666",
+                          cursor: "pointer", fontWeight: vergModus === m.id ? 600 : 400,
+                        }}>{m.label}</button>
+                    ))}
+                  </div>
                 </div>
 
                 {/* Compacte samenvatting */}
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: "1.25rem", padding: "8px 12px", background: "#f0f4f8", borderRadius: 8, fontSize: 12, alignItems: "center" }}>
-                  <span style={{ color: "#888" }}>{bronLabel} · {aantalPosten} posten · {bronJaren.toFixed(1)} jr</span>
-                  <span style={{ color: "#bbb" }}>|</span>
-                  <span>Kosten: <b>{fmt(kostenMaand)}/mnd</b></span>
-                  <span style={{ color: "#bbb" }}>+</span>
-                  <span>Afschr: <b>{fmt(afschrMaandPeriode)}/mnd</b></span>
-                  <span style={{ color: "#bbb" }}>=</span>
-                  <span style={{ fontWeight: 600, color: COLORS.primary }}>Bruto: {fmt(eigenKostenMaandPeriode)}/mnd</span>
-                </div>
+                {(() => {
+                  const vergMaanden = Math.round(bronJaren * 12);
+                  const leaseGemVergperiode = berekenLeaseGemiddeld(vergMaanden);
+                  return (
+                    <>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: "1.25rem", padding: "8px 12px", background: "#f0f4f8", borderRadius: 8, fontSize: 12, alignItems: "center" }}>
+                      <span style={{ color: "#888" }}>{bronLabel} · {aantalPosten} posten · {bronJaren.toFixed(1)} jr</span>
+                      <span style={{ color: "#bbb" }}>|</span>
+                      <span>Eigen auto: <b>{fmt(kostenMaand)}/mnd</b> + afschr <b>{fmt(afschrMaandPeriode)}/mnd</b> = <b style={{ color: COLORS.primary }}>{fmt(eigenKostenMaandPeriode)}/mnd</b></span>
+                      <span style={{ color: "#bbb" }}>|</span>
+                      <span>Lease gem. over {bronJaren.toFixed(1)} jr: <b style={{ color: COLORS.lease }}>{fmt(leaseGemVergperiode)}/mnd</b></span>
+                    </div>
 
                 {/* Drie kolommen: eigen auto, zakelijk lease, privé lease */}
                 {(() => {
-                  // ── Bereken alle scenario-waarden (altijd per maand intern) ──
                   const eigenVast    = afschrMaandPeriode + (kostenMaand * (1 - variabelFractie));
                   const eigenVar     = kostenMaand * variabelFractie;
                   const eigenTotK    = eigenKostenMaandPeriode;
@@ -2403,7 +2410,7 @@ export default function App() {
                   const eigenNetto   = Math.max(eigenSaldo, 0);
                   const eigenVoordeel= eigenSaldo < 0 ? Math.abs(eigenSaldo) : 0;
 
-                  const zakVast      = leaseGemiddeldOverPeriode; // gewogen gem. over bezitsperiode
+                  const zakVast      = leaseGemVergperiode; // gewogen gem. over vergelijkingsperiode
                   const zakVar       = 0;
                   const zakTotK      = zakVast + zakVar;
                   const zakVergVast  = mobBrutoMaand;
@@ -2414,7 +2421,7 @@ export default function App() {
                   const zakNetto     = Math.max(zakSaldo, 0);
                   const zakVoordeel  = 0;
 
-                  const privVast     = leaseGemiddeldOverPeriode; // gewogen gem. over bezitsperiode
+                  const privVast     = leaseGemVergperiode; // gewogen gem. over vergelijkingsperiode
                   const privVar      = 0;
                   const privTotK     = privVast + privVar;
                   const privVergVast = mobNettoMaand;
@@ -2631,6 +2638,9 @@ export default function App() {
                           </div>
                         );
                       })()}
+                    </>
+                  );
+                })()}
                     </>
                   );
                 })()}
