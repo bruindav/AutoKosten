@@ -1,4 +1,4 @@
-// AutoKosten v2 fix37
+// AutoKosten v2 fix38
 // Multi-auto: meerdere auto-profielen, switchen via header
 
 import { useState, useEffect } from "react";
@@ -7,7 +7,7 @@ import {
   Tooltip, Legend, ResponsiveContainer, ReferenceLine, PieChart, Pie, Cell
 } from "recharts";
 
-const APP_VERSION = "v2 fix37";
+const APP_VERSION = "v2 fix38";
 const STORAGE_KEY = "autokosten_v3_multi";
 
 const COLORS = {
@@ -2250,13 +2250,19 @@ export default function App() {
               style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 1.25rem", cursor: "pointer", userSelect: "none", background: openLeaseUitkomst ? "#fff" : "#fafaf8" }}>
               <span style={{ fontSize: 12, color: openLeaseUitkomst ? COLORS.primary : "#bbb", transform: `rotate(${openLeaseUitkomst ? 90 : 0}deg)`, display: "inline-block", transition: "transform 0.15s" }}>▶</span>
               <span style={{ fontWeight: 500, fontSize: 14, flex: 1 }}>Berekening gemiddelde leaseprijs</span>
-              <span style={{ fontSize: 13, color: "#999" }}>gem. {fmt(leaseGemiddeldOverPeriode)}/mnd over {bezitsjaren.toFixed(1)} jaar</span>
+              <span style={{ fontSize: 13, color: "#999" }}>
+                gem. {fmt(berekenLeaseGemiddeld(Math.round(
+                  vergModus === "__lastjaar" ? 12 :
+                  vergModus === "__gem5" ? Math.min(5, bezitsjaren) * 12 :
+                  bezitsjaren * 12
+                )))} /mnd · {vergModus === "__lastjaar" ? "1 jr" : vergModus === "__gem5" ? "5 jr" : `${bezitsjaren.toFixed(1)} jr`}
+              </span>
             </div>
             {openLeaseUitkomst && (
               <div style={{ padding: "0 1.25rem 1.25rem" }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 12 }}>
 
-                  {/* Periode-keuze — bepaalt vergelijkingsperiode voor leasegemiddelde */}
+                  {/* Periode-keuze */}
                   <div style={{ background: "#f0f4ff", borderRadius: 8, padding: "10px 14px" }}>
                     <div style={{ fontSize: 12, fontWeight: 600, color: "#1B4F72", marginBottom: 8 }}>
                       Vergelijkingsperiode — bepaalt de basis voor eigen auto én het gewogen leasegemiddelde
@@ -2280,67 +2286,98 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Periodes tabel */}
-                  <div>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: "#bbb", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
-                      Leaseperiodes over {bezitsjaren.toFixed(1)} jaar bezitsperiode
-                    </div>
-                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                      <thead>
-                        <tr style={{ borderBottom: "0.5px solid #e8e6e0" }}>
-                          <th style={{ textAlign: "left", padding: "4px 8px", fontWeight: 500, color: "#bbb" }}>Periode</th>
-                          <th style={{ textAlign: "left", padding: "4px 8px", fontWeight: 500, color: "#bbb" }}>Duur</th>
-                          <th style={{ textAlign: "right", padding: "4px 8px", fontWeight: 500, color: "#bbb" }}>Per maand</th>
-                          <th style={{ textAlign: "right", padding: "4px 8px", fontWeight: 500, color: "#bbb" }}>Totaal</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {leasePeriodesTabel.map(p => (
-                          <tr key={p.nr} style={{ borderBottom: "0.5px solid #f5f4f0" }}>
-                            <td style={{ padding: "6px 8px", fontWeight: 500 }}>Periode {p.nr}</td>
-                            <td style={{ padding: "6px 8px", color: "#888" }}>{p.duur} mnd</td>
-                            <td style={{ padding: "6px 8px", textAlign: "right", color: COLORS.lease, fontWeight: 500 }}>{fmt(p.maandprijs)}</td>
-                            <td style={{ padding: "6px 8px", textAlign: "right" }}>{fmt(p.totaal)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr style={{ borderTop: "1px solid #e0ddd8" }}>
-                          <td colSpan={2} style={{ padding: "7px 8px", fontWeight: 600 }}>Gewogen gemiddelde</td>
-                          <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 700, color: COLORS.lease, fontSize: 15 }}>{fmt(leaseGemiddeldOverPeriode)}/mnd</td>
-                          <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 600 }}>{fmt(leasePeriodesTabel.reduce((s, p) => s + p.totaal, 0))}</td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
+                  {/* Periodes tabel — twee kolommen: zakelijk + privé */}
+                  {(() => {
+                    // Bereken vergelijkingsperiode-maanden op basis van vergModus
+                    const vergJaren = vergModus === "__lastjaar" ? 1
+                      : vergModus === "__gem5" ? Math.min(5, bezitsjaren)
+                      : bezitsjaren;
+                    const vergMnd = Math.round(vergJaren * 12);
 
-                  {/* Bijtelling */}
+                    // Bouw periodes-tabel voor een gegeven basisprijs
+                    const bouwTabel = (basisprijs) => {
+                      const looptijdMnd = Number(state.leaseLooptijd) || 48;
+                      const stijging    = Number(state.leaseStijgingPct || 10) / 100;
+                      const periodes = [];
+                      let mnd = 0, periodeNr = 0;
+                      while (mnd < vergMnd) {
+                        const maandprijs = Math.round(basisprijs * Math.pow(1 + stijging, periodeNr));
+                        const duur = Math.min(looptijdMnd, vergMnd - mnd);
+                        periodes.push({ nr: periodeNr + 1, maandprijs, duur, totaal: maandprijs * duur });
+                        mnd += looptijdMnd;
+                        periodeNr++;
+                      }
+                      return periodes;
+                    };
+
+                    const zakTabel  = bouwTabel(leasePrive);
+                    const privTabel = bouwTabel(leasePrivePrive);
+                    const zakGem    = berekenLeaseGemiddeld(vergMnd);
+                    const privGem   = berekenLeaseGemiddeldPriv(vergMnd);
+                    const heeftPriveVerschil = leasePrivePrive !== leasePrive;
+
+                    return (
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: "#bbb", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
+                          Leaseperiodes over {vergJaren.toFixed(1)} jaar ({vergModus === "__lastjaar" ? "vorig jaar" : vergModus === "__gem5" ? "gem. 5 jaar" : "tot nu"})
+                        </div>
+                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                          <thead>
+                            <tr style={{ borderBottom: "0.5px solid #e8e6e0" }}>
+                              <th style={{ textAlign: "left", padding: "4px 8px", fontWeight: 500, color: "#bbb" }}>Periode</th>
+                              <th style={{ textAlign: "left", padding: "4px 8px", fontWeight: 500, color: "#bbb" }}>Duur</th>
+                              <th style={{ textAlign: "right", padding: "4px 8px", fontWeight: 500, color: "#bbb" }}>Zakelijk/mnd</th>
+                              {heeftPriveVerschil && <th style={{ textAlign: "right", padding: "4px 8px", fontWeight: 500, color: "#bbb" }}>Privé/mnd</th>}
+                              <th style={{ textAlign: "right", padding: "4px 8px", fontWeight: 500, color: "#bbb" }}>Totaal</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {zakTabel.map((p, i) => (
+                              <tr key={p.nr} style={{ borderBottom: "0.5px solid #f5f4f0" }}>
+                                <td style={{ padding: "6px 8px", fontWeight: 500 }}>Periode {p.nr}</td>
+                                <td style={{ padding: "6px 8px", color: "#888" }}>{p.duur} mnd</td>
+                                <td style={{ padding: "6px 8px", textAlign: "right", color: COLORS.lease, fontWeight: 500 }}>{fmt(p.maandprijs)}</td>
+                                {heeftPriveVerschil && <td style={{ padding: "6px 8px", textAlign: "right", color: COLORS.accent, fontWeight: 500 }}>{fmt(privTabel[i]?.maandprijs)}</td>}
+                                <td style={{ padding: "6px 8px", textAlign: "right" }}>{fmt(p.totaal)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot>
+                            <tr style={{ borderTop: "1px solid #e0ddd8", background: "#f7f6f2" }}>
+                              <td colSpan={2} style={{ padding: "7px 8px", fontWeight: 600 }}>Gewogen gemiddelde</td>
+                              <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 700, color: COLORS.lease, fontSize: 15 }}>{fmt(zakGem)}/mnd</td>
+                              {heeftPriveVerschil && <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 700, color: COLORS.accent, fontSize: 15 }}>{fmt(privGem)}/mnd</td>}
+                              <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 600 }}>{fmt(zakTabel.reduce((s, p) => s + p.totaal, 0))}</td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Bijtelling + netto */}
                   <div style={{ borderTop: "0.5px solid #e8e6e0", paddingTop: 10 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
                       <span style={{ color: "#999" }}>Bijtelling ({state.bijtellingPct}% van {fmt(state.cataloguswaarde)})</span>
                       <span>{fmt(bijtellingMaand)}/mnd</span>
                     </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 2 }}>
                       <span style={{ color: "#999" }}>Belasting op bijtelling ({state.belastingschijf}%)</span>
                       <span style={{ color: COLORS.danger }}>+ {fmt(bijtellingBelasting)}/mnd</span>
                     </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 2 }}>
-                      <span style={{ color: "#999" }}>Kosten per km</span>
-                      <span style={{ fontWeight: 500 }}>{fmtC(leaseKmKost)}/km</span>
-                    </div>
                   </div>
-
-                  {/* Netto samenvatting */}
                   <div style={{ background: "#f7f6f2", borderRadius: 8, padding: "10px 14px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
-                      <span style={{ color: "#666" }}>Eerste periode (€{leasePrive}/mnd) + bijtelling</span>
+                      <span style={{ color: "#666" }}>Eerste periode + bijtelling</span>
                       <span style={{ fontWeight: 500, color: COLORS.danger }}>{fmt(leaseMaandNetto)}/mnd</span>
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, fontWeight: 600 }}>
-                      <span>Gem. over {bezitsjaren.toFixed(1)} jaar + bijtelling</span>
-                      <span style={{ color: COLORS.danger }}>{fmt(leaseGemiddeldOverPeriode + bijtellingBelasting)}/mnd</span>
+                      <span>Gem. zakelijk over gekozen periode + bijtelling</span>
+                      <span style={{ color: COLORS.danger }}>{fmt(berekenLeaseGemiddeld(Math.round(
+                        (vergModus === "__lastjaar" ? 1 : vergModus === "__gem5" ? Math.min(5, bezitsjaren) : bezitsjaren) * 12
+                      )) + bijtellingBelasting)}/mnd</span>
                     </div>
-                    <div style={{ fontSize: 11, color: "#bbb", marginTop: 4 }}>lease incl. indexatie + belasting bijtelling, excl. vergoedingen</div>
+                    <div style={{ fontSize: 11, color: "#bbb", marginTop: 4 }}>incl. indexatie + belasting bijtelling, excl. vergoedingen</div>
                   </div>
                 </div>
               </div>
@@ -2508,7 +2545,7 @@ export default function App() {
                   );
 
                   const TotaalRij = ({ label, vals, color }) => (
-                    <div style={{ display: "flex", alignItems: "baseline", padding: "7px 0 5px", borderTop: "1px solid #e0ddd8", marginTop: 2 }}>
+                    <div style={{ display: "flex", alignItems: "baseline", padding: "7px 6px 5px", borderTop: "1px solid #e0ddd8", marginTop: 2, background: "#f3f2ef", borderRadius: "0 0 4px 4px" }}>
                       <div style={{ width: LBL_W, fontSize: 13, fontWeight: 500 }}>{label}</div>
                       {vals.map((v, i) => (
                         <div key={i} style={{ width: COL_W, textAlign: "right", fontSize: 14, fontWeight: 600, color: Array.isArray(color) ? color[i] : color }}>
@@ -2578,7 +2615,7 @@ export default function App() {
                               kleur={COLORS.success} indent />
                           </>
                         )}
-                        <TotaalRij label="Totaal vergoedingen (saldo)"
+                        <TotaalRij label="Totaal vergoedingen"
                           vals={cols.map(c => c.totV)}
                           color={COLORS.success} />
 
