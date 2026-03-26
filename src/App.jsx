@@ -1,4 +1,4 @@
-// AutoKosten v2 fix41
+// AutoKosten v2 fix42
 // Multi-auto: meerdere auto-profielen, switchen via header
 
 import { useState, useEffect } from "react";
@@ -7,7 +7,7 @@ import {
   Tooltip, Legend, ResponsiveContainer, ReferenceLine, PieChart, Pie, Cell
 } from "recharts";
 
-const APP_VERSION = "v2 fix41";
+const APP_VERSION = "v2 fix42";
 const STORAGE_KEY = "autokosten_v3_multi";
 
 const COLORS = {
@@ -223,6 +223,7 @@ function defaultState() {
     verzekeringJaren: [],
     pechhulpJaren: [],
     huidigeKmStand: null,
+    kmStandAankoop: null,
     mobiliteitBrutoMaand: "",
     kmVergTarief: "0.23",
     kmVergKmMaand: "",
@@ -993,7 +994,6 @@ export default function App() {
                       ["Aankoopdatum", "aankoopdatum", "date"],
                       ["Verwacht weg",  "verwachteVerkoopdatum", "date"],
                       ["Verkoopprijs",  "verwachtVerkoopprijs", "number"],
-                      ["Km per jaar",   "jaarlijkseKm", "number"],
                     ].map(([lbl, key, type]) => (
                       <div key={key} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
                         <label style={{ fontSize: 13, color: "#666", width: 90, flexShrink: 0 }}>{lbl}</label>
@@ -1003,16 +1003,72 @@ export default function App() {
                           style={{ flex: 1, minWidth: 0 }} />
                       </div>
                     ))}
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <label style={{ fontSize: 13, color: "#666", width: 90, flexShrink: 0 }}>Km-stand</label>
-                      <input type="number" value={state.huidigeKmStand ?? latestKmStand ?? ""}
-                        onChange={e => set("huidigeKmStand", e.target.value ? Number(e.target.value) : null)}
-                        placeholder={latestKmStand ? fmtN(latestKmStand) : "optioneel"} style={{ flex: 1, minWidth: 0 }} />
-                      {latestKmStand > 0 && (
-                        <button onClick={() => set("huidigeKmStand", latestKmStand)}
-                          style={{ fontSize: 11, background: "none", border: "0.5px solid #e0ddd8", borderRadius: 4, padding: "4px 6px", cursor: "pointer", color: "#999", whiteSpace: "nowrap", flexShrink: 0 }}>
-                          ← {fmtN(latestKmStand)}
-                        </button>
+
+                    {/* Km-standen */}
+                    <div style={{ borderTop: "0.5px solid #f0ede8", paddingTop: 8, marginTop: 4 }}>
+                      <div style={{ fontSize: 11, color: "#bbb", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Km-standen</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                        <label style={{ fontSize: 13, color: "#666", width: 90, flexShrink: 0 }}>Bij aankoop</label>
+                        <input type="number" value={state.kmStandAankoop ?? ""}
+                          onChange={e => {
+                            const val = e.target.value ? Number(e.target.value) : null;
+                            set("kmStandAankoop", val);
+                            // Herbereken km/jaar als huidige stand ook bekend is
+                            const huidig = state.huidigeKmStand || latestKmStand;
+                            if (val && huidig && verlopenJaren > 0) {
+                              set("jaarlijkseKm", Math.round((huidig - val) / verlopenJaren));
+                            }
+                          }}
+                          placeholder="optioneel" style={{ flex: 1, minWidth: 0 }} />
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                        <label style={{ fontSize: 13, color: "#666", width: 90, flexShrink: 0 }}>Nu</label>
+                        <input type="number" value={state.huidigeKmStand ?? latestKmStand ?? ""}
+                          onChange={e => {
+                            const val = e.target.value ? Number(e.target.value) : null;
+                            set("huidigeKmStand", val);
+                            // Herbereken km/jaar als aankoopstand ook bekend is
+                            if (val && state.kmStandAankoop && verlopenJaren > 0) {
+                              set("jaarlijkseKm", Math.round((val - state.kmStandAankoop) / verlopenJaren));
+                            }
+                          }}
+                          placeholder={latestKmStand ? fmtN(latestKmStand) : "optioneel"} style={{ flex: 1, minWidth: 0 }} />
+                        {latestKmStand > 0 && (
+                          <button onClick={() => {
+                            set("huidigeKmStand", latestKmStand);
+                            if (state.kmStandAankoop && verlopenJaren > 0) {
+                              set("jaarlijkseKm", Math.round((latestKmStand - state.kmStandAankoop) / verlopenJaren));
+                            }
+                          }}
+                            style={{ fontSize: 11, background: "none", border: "0.5px solid #e0ddd8", borderRadius: 4, padding: "4px 6px", cursor: "pointer", color: "#999", whiteSpace: "nowrap", flexShrink: 0 }}>
+                            ← {fmtN(latestKmStand)}
+                          </button>
+                        )}
+                      </div>
+                      {/* Km/jaar — berekend of handmatig */}
+                      {(() => {
+                        const huidig = state.huidigeKmStand || latestKmStand;
+                        const berekend = (state.kmStandAankoop && huidig && verlopenJaren > 0)
+                          ? Math.round((huidig - state.kmStandAankoop) / verlopenJaren) : null;
+                        return (
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <label style={{ fontSize: 13, color: "#666", width: 90, flexShrink: 0 }}>Km per jaar</label>
+                            <input type="number" value={state.jaarlijkseKm ?? ""}
+                              onChange={e => set("jaarlijkseKm", e.target.value ? Number(e.target.value) : null)}
+                              style={{ flex: 1, minWidth: 0,
+                                borderColor: berekend ? COLORS.primary + "80" : undefined }} />
+                            {berekend && (
+                              <span style={{ fontSize: 11, color: COLORS.primary, whiteSpace: "nowrap", flexShrink: 0 }}>
+                                = {fmtN(berekend)}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
+                      {state.kmStandAankoop && (state.huidigeKmStand || latestKmStand) && (
+                        <div style={{ fontSize: 11, color: "#bbb", marginTop: 4 }}>
+                          {fmtN((state.huidigeKmStand || latestKmStand) - state.kmStandAankoop)} km gereden in {verlopenJaren.toFixed(1)} jaar
+                        </div>
                       )}
                     </div>
                   </div>
