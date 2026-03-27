@@ -1,0 +1,17 @@
+{
+  "name": "AutoKosten",
+  "short_name": "AutoKosten",
+  "description": "Analyseer en vergelijk de kosten van jouw eigen auto met lease",
+  "start_url": "/AutoKosten/",
+  "display": "standalone",
+  "background_color": "#f7f6f2",
+  "theme_color": "#1B4F72",
+  "icons": [
+    {
+      "src": "/AutoKosten/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="64" height="64" rx="14" fill="#1B4F72"/>
+  <path d="M8 40h48v7a2 2 0 01-2 2H10a2 2 0 01-2-2v-7z" fill="#2980B9"/>
+  <path d="M11 40l6-13h30l6 13H11z" fill="#2980B9"/>
+  <path d="M17 27l4-8h22l4 8H17z" fill="#5DADE2"/>
+  <rect x="19" y="27" width="10" height="8" rx="2" fill="#AED6F1" opacity="0.9"/>
+  <rect x="33" y="27" width="10" height="8" rx="2" fill="#AED6F1" opacity="0.9"/>
+  <circle cx="18" cy="43" r="6" fill="#1a1a1a"/>
+  <circle cx="18" cy="43" r="3" fill="#7F8C8D"/>
+  <circle cx="46" cy="43" r="6" fill="#1a1a1a"/>
+  <circle cx="46" cy="43" r="3" fill="#7F8C8D"/>
+  <text x="22" y="22" font-size="12" fill="#F0B429" font-weight="bold" font-family="system-ui, sans-serif">€?</text>
+</svg>
