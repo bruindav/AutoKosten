@@ -1011,39 +1011,45 @@ export default function App() {
       {/* Header: actieve auto */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "1.5rem", flexWrap: "wrap", gap: 12 }}>
         <div style={{ minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-            {/* Logo */}
-            <svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect width="36" height="36" rx="8" fill="#1B4F72"/>
-              {/* Auto body */}
-              <path d="M5 22h26v4a1 1 0 01-1 1H6a1 1 0 01-1-1v-4z" fill="#2980B9"/>
-              <path d="M7 22l3-7h16l3 7H7z" fill="#2980B9"/>
-              <path d="M10 15l2-4h12l2 4H10z" fill="#5DADE2"/>
-              {/* Ramen */}
-              <rect x="12" y="15" width="5" height="4" rx="1" fill="#AED6F1" opacity="0.9"/>
-              <rect x="19" y="15" width="5" height="4" rx="1" fill="#AED6F1" opacity="0.9"/>
-              {/* Wielen */}
-              <circle cx="11" cy="24" r="3" fill="#1a1a1a"/>
-              <circle cx="11" cy="24" r="1.5" fill="#7F8C8D"/>
-              <circle cx="25" cy="24" r="3" fill="#1a1a1a"/>
-              <circle cx="25" cy="24" r="1.5" fill="#7F8C8D"/>
-              {/* € teken */}
-              <text x="13" y="12" fontSize="6" fill="#F0B429" fontWeight="bold" fontFamily="system-ui">€</text>
-              {/* ? teken */}
-              <text x="20" y="12" fontSize="6" fill="#F0B429" fontWeight="bold" fontFamily="system-ui">?</text>
-            </svg>
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.1em", color: "#bbb", textTransform: "uppercase" }}>
-                AutoKosten {APP_VERSION}
-                {saveFlash && <span style={{ marginLeft: 12, color: COLORS.success, fontWeight: 400 }}>✓ opgeslagen</span>}
-              </div>
-            </div>
+          <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.1em", color: "#bbb", textTransform: "uppercase", marginBottom: 4 }}>
+            AutoKosten {APP_VERSION}
+            {saveFlash && <span style={{ marginLeft: 12, color: COLORS.success, fontWeight: 400 }}>✓ opgeslagen</span>}
           </div>
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 600, wordBreak: "break-word" }}>
             {state.merk && state.model ? `${state.merk} ${state.model}` : state.label || "Mijn auto"}
           </h1>
           {state.bouwjaar && <div style={{ fontSize: 13, color: "#999", marginTop: 2 }}>{state.bouwjaar} · {state.brandstof} · {state.kenteken}{state.gewichtKg ? ` · ${fmtN(state.gewichtKg)} kg` : ""}{(state.huidigeKmStand || latestKmStand) ? ` · ${fmtN(state.huidigeKmStand || latestKmStand)} km` : ""}</div>}
         </div>
+        {/* Logo rechts */}
+        <svg width="80" height="56" viewBox="0 0 80 56" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+          {/* Autosilhouet zijaanzicht */}
+          {/* Carrosserie onderste deel */}
+          <path d="M6 38 L6 32 Q6 30 8 30 L72 30 Q74 30 74 32 L74 38 Q74 40 72 40 L8 40 Q6 40 6 38 Z" fill="#1B4F72"/>
+          {/* Daklijn / bovenkant */}
+          <path d="M18 30 Q22 18 30 16 L52 16 Q60 18 64 30 Z" fill="#2980B9"/>
+          {/* Voorruit */}
+          <path d="M50 30 Q54 20 58 18 L62 18 Q64 20 63 30 Z" fill="#AED6F1" opacity="0.85"/>
+          {/* Achterruit */}
+          <path d="M30 30 Q28 20 30 18 L38 17 L40 30 Z" fill="#AED6F1" opacity="0.85"/>
+          {/* Zijraam middendeel */}
+          <path d="M40 30 L41 17 L50 16 L50 30 Z" fill="#AED6F1" opacity="0.85"/>
+          {/* Wielkasten */}
+          <path d="M14 40 Q14 44 18 44 Q22 44 22 40" fill="#1B4F72" stroke="#1B4F72" strokeWidth="0.5"/>
+          <path d="M58 40 Q58 44 62 44 Q66 44 66 40" fill="#1B4F72" stroke="#1B4F72" strokeWidth="0.5"/>
+          {/* Wielen */}
+          <circle cx="18" cy="42" r="7" fill="#222"/>
+          <circle cx="18" cy="42" r="4" fill="#555"/>
+          <circle cx="18" cy="42" r="1.5" fill="#888"/>
+          <circle cx="62" cy="42" r="7" fill="#222"/>
+          <circle cx="62" cy="42" r="4" fill="#555"/>
+          <circle cx="62" cy="42" r="1.5" fill="#888"/>
+          {/* Koplampen */}
+          <ellipse cx="71" cy="34" rx="3" ry="2" fill="#FFF3B0" opacity="0.9"/>
+          {/* Achterlicht */}
+          <rect x="6" y="31" width="3" height="5" rx="1" fill="#E74C3C" opacity="0.85"/>
+          {/* € teken op portier */}
+          <text x="28" y="37" fontSize="9" fill="#F0B429" fontWeight="bold" fontFamily="system-ui, sans-serif">€?</text>
+        </svg>
       </div>
 
       {/* Tab bar */}
