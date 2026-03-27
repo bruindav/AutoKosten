@@ -658,6 +658,17 @@ export default function App() {
   const [importError, setImportError] = useState("");
   const [saveFlash, setSaveFlash]   = useState(false);
   const [showWelcome, setShowWelcome] = useState(() => !localStorage.getItem("autokosten_welcomed"));
+  const [showDonatie, setShowDonatie] = useState(() => {
+    if (localStorage.getItem("autokosten_donatie_gedaan")) return false;
+    if (!localStorage.getItem("autokosten_welcomed")) return false; // welkomst heeft voorrang
+    if (localStorage.getItem("autokosten_donatie_uitgesteld")) {
+      const tot = Number(localStorage.getItem("autokosten_donatie_uitgesteld"));
+      if (Date.now() < tot) return false;
+    }
+    const sessies = Number(localStorage.getItem("autokosten_sessies") || "0") + 1;
+    localStorage.setItem("autokosten_sessies", String(sessies));
+    return sessies >= 5;
+  });
   const [showAutoMenu, setShowAutoMenu] = useState(false);
   const [editLabelId, setEditLabelId] = useState(null);
   const [editLabelVal, setEditLabelVal] = useState("");
@@ -3141,8 +3152,98 @@ export default function App() {
         <a href="/AutoKosten/privacy.html" style={{ color: "#1B4F72", textDecoration: "none" }}>Privacy</a>
         <a href="/AutoKosten/disclaimer.html" style={{ color: "#1B4F72", textDecoration: "none" }}>Disclaimer</a>
         <a href="/AutoKosten/help.html" style={{ color: "#1B4F72", textDecoration: "none" }}>Help</a>
+        <a href="https://digidaveapps.lemonsqueezy.com/checkout/buy/d279521d-3d7c-48c0-8f0c-8d0407f4a104?embed=1"
+          className="lemonsqueezy-button"
+          style={{ color: "#F0B429", textDecoration: "none", fontWeight: 500, display: "flex", alignItems: "center", gap: 5 }}
+          onClick={() => localStorage.setItem("autokosten_donatie_gedaan", "1")}>
+          💰 Steun AutoKosten
+        </a>
         <span style={{ marginLeft: "auto", fontSize: 11 }}>Lokale opslag · geen server · geen cloud</span>
       </div>
+
+      {/* ══ DONATIE POPUP ══ */}
+      {showDonatie && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 999,
+          background: "rgba(0,0,0,0.45)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          padding: "1rem",
+        }}>
+          <div style={{
+            background: "#fff", borderRadius: 16, padding: "2rem",
+            maxWidth: 420, width: "100%", boxShadow: "0 8px 40px rgba(0,0,0,0.18)",
+            textAlign: "center",
+          }}>
+            {/* Auto logo */}
+            <svg width="72" height="50" viewBox="0 0 80 56" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ marginBottom: 12 }}>
+              <path d="M6 38 L6 32 Q6 30 8 30 L72 30 Q74 30 74 32 L74 38 Q74 40 72 40 L8 40 Q6 40 6 38 Z" fill="#1B4F72"/>
+              <path d="M18 30 Q22 18 30 16 L52 16 Q60 18 64 30 Z" fill="#2980B9"/>
+              <path d="M50 30 Q54 20 58 18 L62 18 Q64 20 63 30 Z" fill="#AED6F1" opacity="0.85"/>
+              <path d="M30 30 Q28 20 30 18 L38 17 L40 30 Z" fill="#AED6F1" opacity="0.85"/>
+              <path d="M40 30 L41 17 L50 16 L50 30 Z" fill="#AED6F1" opacity="0.85"/>
+              <circle cx="18" cy="42" r="7" fill="#222"/><circle cx="18" cy="42" r="4" fill="#555"/>
+              <circle cx="62" cy="42" r="7" fill="#222"/><circle cx="62" cy="42" r="4" fill="#555"/>
+              <ellipse cx="71" cy="34" rx="3" ry="2" fill="#FFF3B0" opacity="0.9"/>
+              <rect x="6" y="31" width="3" height="5" rx="1" fill="#E74C3C" opacity="0.85"/>
+              <text x="28" y="37" fontSize="9" fill="#F0B429" fontWeight="bold" fontFamily="system-ui">€?</text>
+            </svg>
+
+            <div style={{ fontSize: 22, marginBottom: 8 }}>💰</div>
+            <div style={{ fontSize: 19, fontWeight: 700, color: "#1B4F72", marginBottom: 10 }}>
+              Vind je AutoKosten waardevol?
+            </div>
+            <p style={{ fontSize: 14, color: "#555", lineHeight: 1.7, marginBottom: 20 }}>
+              AutoKosten is gratis en zonder advertenties. Als de app je helpt bij je autokosten in beeld te brengen, overweeg dan een kleine donatie. Je bepaalt zelf het bedrag.
+            </p>
+
+            {/* Donatie knop */}
+            <a href="https://digidaveapps.lemonsqueezy.com/checkout/buy/d279521d-3d7c-48c0-8f0c-8d0407f4a104?embed=1"
+              className="lemonsqueezy-button"
+              onClick={() => {
+                localStorage.setItem("autokosten_donatie_gedaan", "1");
+                setShowDonatie(false);
+              }}
+              style={{
+                display: "block", width: "100%", padding: "13px",
+                background: "#F0B429", color: "#1a1a1a", fontWeight: 700,
+                fontSize: 15, borderRadius: 10, textDecoration: "none",
+                marginBottom: 10, boxSizing: "border-box",
+              }}>
+              💰 Pay what you want
+            </a>
+
+            {/* Later */}
+            <button
+              onClick={() => {
+                // Stel 30 dagen uit
+                localStorage.setItem("autokosten_donatie_uitgesteld", String(Date.now() + 30 * 24 * 60 * 60 * 1000));
+                setShowDonatie(false);
+              }}
+              style={{
+                width: "100%", padding: "10px", fontSize: 13,
+                background: "none", border: "0.5px solid #e0ddd8",
+                borderRadius: 10, cursor: "pointer", color: "#999",
+                marginBottom: 6,
+              }}>
+              Misschien later (herinnering over 30 dagen)
+            </button>
+
+            {/* Nooit meer */}
+            <button
+              onClick={() => {
+                localStorage.setItem("autokosten_donatie_gedaan", "1");
+                setShowDonatie(false);
+              }}
+              style={{
+                width: "100%", padding: "8px", fontSize: 12,
+                background: "none", border: "none",
+                cursor: "pointer", color: "#ccc",
+              }}>
+              Nee bedankt, niet meer vragen
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
