@@ -7,7 +7,110 @@ import {
   Tooltip, Legend, ResponsiveContainer, ReferenceLine, PieChart, Pie, Cell
 } from "recharts";
 
-const APP_VERSION = "v2 fix43";
+const APP_VERSION = "v2 fix44";
+
+const VOORBEELD_CSV = `datum;categorie;bedrag;km;omschrijving
+2025-03-14;onderhoud;586.68;217191;Onderhoud groot
+2022-03-20;reparatie;3983.67;176686;Distributie en turbo vervangen
+2022-03-24;banden;197.22;170319;1 band
+2024-10-28;reparatie;2533;210828;Dynamo/ startmotor / aandrijfriem
+2023-05-31;reparatie;285.57;184215;Multiriem vervangen
+2024-01-15;onderhoud;594.58;196509;Onderhoudsbeurt klein
+2022-01-18;onderhoud;490.82;162532;Onderhoud
+2025-09-23;reparatie;273;;Raam links achter
+2025-01-20;onderhoud;30;;Apk
+2026-03-07;onderhoud;559.13;237000;Grote beurt
+2019-01-04;onderhoud;605;102300;
+2020-06-06;reparatie;183;131741;Storing oplossen
+2021-01-19;onderhoud;480;144656;Onderhoudsbeurt
+2022-09-02;reparatie;1598;172707;Gasklephuis
+2023-04-25;onderhoud;322.9;183019;
+2019-04-15;banden;49;;Wissel
+2018-10-31;banden;302;;4x banden
+2025-07-12;verzekering;179;;Pechhulp allianz
+2024-07-10;verzekering;139;;Pechhulp
+2022-07-12;verzekering;109;;Pechhulp allianz
+2024-07-19;verzekering;139;;Pechhulp allianz
+2025-12-31;brandstof;1400;;Geschat
+2024-12-31;brandstof;1400;;Geschat
+2023-03-31;brandstof;1400;;Geschat
+2022-03-26;brandstof;1400;;Geschat
+2021-03-26;brandstof;1400;;Geschat
+2019-03-26;brandstof;1400;;Geschat
+2020-03-26;brandstof;1400;;Geschat
+2018-03-18;brandstof;1300;;Geschat
+2016-01-01;wegenbelasting;552;;MRB kwartaal
+2016-03-31;wegenbelasting;552;;MRB kwartaal
+2016-06-30;wegenbelasting;552;;MRB kwartaal
+2016-09-30;wegenbelasting;552;;MRB kwartaal
+2017-01-01;wegenbelasting;552;;MRB kwartaal
+2017-03-31;wegenbelasting;552;;MRB kwartaal
+2017-06-30;wegenbelasting;552;;MRB kwartaal
+2017-09-30;wegenbelasting;552;;MRB kwartaal
+2018-01-01;wegenbelasting;552;;MRB kwartaal
+2018-03-31;wegenbelasting;552;;MRB kwartaal
+2018-06-30;wegenbelasting;552;;MRB kwartaal
+2018-09-30;wegenbelasting;552;;MRB kwartaal
+2019-01-01;wegenbelasting;552;;MRB kwartaal
+2019-03-31;wegenbelasting;552;;MRB kwartaal
+2019-06-30;wegenbelasting;552;;MRB kwartaal
+2019-09-30;wegenbelasting;552;;MRB kwartaal
+2020-01-01;wegenbelasting;552;;MRB kwartaal
+2020-03-31;wegenbelasting;552;;MRB kwartaal
+2020-06-30;wegenbelasting;552;;MRB kwartaal
+2020-09-30;wegenbelasting;552;;MRB kwartaal
+2021-01-01;wegenbelasting;552;;MRB kwartaal
+2021-03-31;wegenbelasting;552;;MRB kwartaal
+2021-06-30;wegenbelasting;552;;MRB kwartaal
+2021-09-30;wegenbelasting;552;;MRB kwartaal
+2022-01-01;wegenbelasting;552;;MRB kwartaal
+2022-03-31;wegenbelasting;552;;MRB kwartaal
+2022-06-30;wegenbelasting;552;;MRB kwartaal
+2022-09-30;wegenbelasting;552;;MRB kwartaal
+2023-01-01;wegenbelasting;552;;MRB kwartaal
+2023-03-31;wegenbelasting;552;;MRB kwartaal
+2023-06-30;wegenbelasting;552;;MRB kwartaal
+2023-09-30;wegenbelasting;552;;MRB kwartaal
+2024-01-01;wegenbelasting;552;;MRB kwartaal
+2024-03-31;wegenbelasting;552;;MRB kwartaal
+2024-06-30;wegenbelasting;552;;MRB kwartaal
+2024-09-30;wegenbelasting;552;;MRB kwartaal
+2025-01-01;wegenbelasting;552;;MRB kwartaal
+2025-03-31;wegenbelasting;552;;MRB kwartaal
+2025-06-30;wegenbelasting;552;;MRB kwartaal
+2025-09-30;wegenbelasting;552;;MRB kwartaal
+2026-01-01;wegenbelasting;552;;MRB kwartaal
+2015-01-01;brandstof;837;;Diesel 2015 (CBS)
+2016-01-01;brandstof;781;;Diesel 2016 (CBS)
+2017-01-01;brandstof;836;;Diesel 2017 (CBS)
+2018-01-01;brandstof;893;;Diesel 2018 (CBS)
+2019-01-01;brandstof;893;;Diesel 2019 (CBS)
+2020-01-01;brandstof;836;;Diesel 2020 (CBS)
+2021-01-01;brandstof;996;;Diesel 2021 (CBS)
+2022-01-01;brandstof;1217;;Diesel 2022 (CBS)
+2023-01-01;brandstof;1085;;Diesel 2023 (CBS)
+2024-01-01;brandstof;1101;;Diesel 2024 (CBS)
+2025-01-01;brandstof;1084;;Diesel 2025 (CBS)
+2026-01-01;brandstof;1138;;Diesel 2026 (CBS)`;
+
+const VOORBEELD_STATE = {
+  label: "Voorbeeld auto", merk: "Peugeot", model: "508", bouwjaar: "2013",
+  brandstof: "Diesel", kenteken: "VOORBEELD", gewichtKg: 1560, provincie: "gelderland",
+  aankoopprijs: 18500, aankoopdatum: "2015-06-01",
+  verwachteVerkoopdatum: "2027-01-01", verwachtVerkoopprijs: 2500,
+  jaarlijkseKm: 18000, kmStandAankoop: 62000, huidigeKmStand: 237000,
+  cataloguswaarde: 35000, leaseLooptijd: 60, leaseKm: 18000, leaseAanbetaling: 0,
+  leaseStijgingPct: 10, bijtellingPct: 22, belastingschijf: 37,
+  gemiddeldVerbruik: 18, brandstofPrijs: 1.50, brandstofAutomatisch: false,
+  brandstofPrijzenPerJaar: {}, brandstofJaarBedrag: null,
+  mobiliteitBrutoMaand: 0, kmVergTarief: 0, kmVergKmMaand: 0, kmVergMaandTotaal: 0,
+  mrbWerkelijkMaand: "", mrbAutomatisch: false,
+  verzekeringAutomatisch: false, verzekeringType: "WA", verzekeringJaren: [],
+  pechhulpJaren: [], cbsLaden: false, brandstofPrijzenPerJaar: {},
+  leaseBedragHandmatig: null, leasePriveBedragHandmatig: null,
+  kmPerTank: null, tankLiter: null,
+};
+
 const STORAGE_KEY = "autokosten_v3_multi";
 
 const COLORS = {
@@ -839,10 +942,32 @@ export default function App() {
   };
 
   // Import
+  const handleImportFile = (file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setImportError("");
+      try {
+        const text = e.target.result;
+        const regels = text.trim().split("\n").filter(l => l.trim() && !l.startsWith("datum"));
+        let id = Date.now();
+        const nieuw = regels.map(r => {
+          const [datum, cat, bedrag, km, omschr] = r.split(/[,;	]/);
+          if (!datum || isNaN(Number(bedrag))) throw new Error(`Ongeldige regel: ${r}`);
+          const cm = COST_CATEGORIES.find(c => c.id === cat.trim().toLowerCase() || c.label.toLowerCase().includes(cat.trim().toLowerCase()));
+          return { id: id++, datum: datum.trim(), categorie: cm?.id||"overig", bedrag: Number(bedrag), km: km?Number(km):null, omschrijving: omschr?.trim()||"", automatisch: false };
+        });
+        set("kosten", [...state.kosten, ...nieuw]);
+        setImportText(`✓ ${nieuw.length} posten geïmporteerd`);
+      } catch (err) { setImportError(err.message); }
+    };
+    reader.readAsText(file);
+  };
+
   const handleImport = () => {
     setImportError("");
     try {
-      const regels = importText.trim().split("\n").filter(l => l.trim() && !l.startsWith("datum"));
+      const regels = importText.trim().split("\n").filter(l => l.trim() && !l.startsWith("datum") && !l.startsWith("✓"));
       let id = Date.now();
       const nieuw = regels.map(r => {
         const [datum, cat, bedrag, km, omschr] = r.split(/[,;	]/);
@@ -904,7 +1029,6 @@ export default function App() {
           { id: "kosten",  label: "📊 Kosten" },
           { id: "grafiek", label: "📈 Grafiek" },
           { id: "lease",   label: "🔄 Lease" },
-          { id: "import",  label: "⬆ Import" },
           { id: "beheer",  label: "⚙ Beheer" },
         ].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
@@ -1650,6 +1774,110 @@ export default function App() {
               </button>
             </div>
           </Card>
+
+          {/* Import */}
+          <Card>
+            <SectionTitle>Kosten importeren (CSV)</SectionTitle>
+            <div style={{ fontSize: 13, color: "#999", marginBottom: 10, lineHeight: 1.7 }}>
+              Formaat: <code style={{ background: "#f7f6f2", padding: "2px 6px", borderRadius: 4, fontSize: 12 }}>datum;categorie;bedrag;km;omschrijving</code><br />
+              Categorieën: {COST_CATEGORIES.map(c => c.id).join(", ")}
+            </div>
+
+            {/* Bestandskiezer */}
+            <div style={{ marginBottom: 12 }}>
+              <label style={{
+                display: "inline-flex", alignItems: "center", gap: 8,
+                background: COLORS.primary, color: "#fff", borderRadius: 6,
+                padding: "9px 18px", cursor: "pointer", fontWeight: 500, fontSize: 13
+              }}>
+                📂 Bestand kiezen
+                <input type="file" accept=".csv,.txt" style={{ display: "none" }}
+                  onChange={e => { handleImportFile(e.target.files[0]); e.target.value = ""; }} />
+              </label>
+              <span style={{ fontSize: 12, color: "#bbb", marginLeft: 10 }}>CSV of tekstbestand</span>
+            </div>
+
+            {/* Of plakken */}
+            <div style={{ fontSize: 12, color: "#bbb", marginBottom: 6 }}>Of plak CSV-tekst hier:</div>
+            <textarea value={importText} onChange={e => setImportText(e.target.value)} rows={5}
+              placeholder={"2024-01-10;verzekering;950;;Jaarlijkse premie\n2024-03-15;onderhoud;285;62000;Kleine beurt"}
+              style={{ width: "100%", fontFamily: "monospace", fontSize: 12, padding: 10, borderRadius: 6, border: "0.5px solid #e0ddd8", background: "#fafaf8", color: "#1a1a1a", boxSizing: "border-box", resize: "vertical" }} />
+            {importError && <div style={{ color: COLORS.danger, fontSize: 13, marginTop: 6 }}>⚠ {importError}</div>}
+            {importText.startsWith("✓") && <div style={{ color: COLORS.success, fontSize: 13, marginTop: 6 }}>{importText}</div>}
+            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+              <button onClick={handleImport}
+                disabled={!importText.trim() || importText.startsWith("✓")}
+                style={{ background: COLORS.primary, color: "#fff", border: "none", borderRadius: 6, padding: "9px 18px", cursor: "pointer", fontWeight: 500, opacity: (!importText.trim() || importText.startsWith("✓")) ? 0.4 : 1 }}>
+                Importeren
+              </button>
+              <button onClick={() => { setImportText(""); setImportError(""); }}
+                style={{ background: "none", border: "0.5px solid #e0ddd8", borderRadius: 6, padding: "9px 14px", cursor: "pointer", color: "#999" }}>
+                Wissen
+              </button>
+            </div>
+          </Card>
+
+          {/* Export */}
+          <Card>
+            <SectionTitle>Exporteren naar CSV</SectionTitle>
+            <div style={{ fontSize: 13, color: "#999", marginBottom: 10 }}>
+              Download je kostendata als CSV-bestand om te bewaren of in te laden in een andere auto.
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button
+                onClick={() => {
+                  const blob = new Blob([exportCSV], { type: "text/csv;charset=utf-8;" });
+                  const url  = URL.createObjectURL(blob);
+                  const a    = document.createElement("a");
+                  const naam = `autokosten_${(state.merk || "auto").toLowerCase()}_${new Date().toISOString().slice(0,10)}.csv`;
+                  a.href = url; a.download = naam; a.click();
+                  URL.revokeObjectURL(url);
+                }}
+                style={{ background: COLORS.primary, color: "#fff", border: "none", borderRadius: 6, padding: "9px 18px", cursor: "pointer", fontWeight: 500 }}>
+                ⬇ Download CSV
+              </button>
+              <button onClick={() => navigator.clipboard?.writeText(exportCSV)}
+                style={{ background: "none", border: "0.5px solid #e0ddd8", borderRadius: 6, padding: "9px 14px", cursor: "pointer", color: "#666" }}>
+                Kopiëren
+              </button>
+            </div>
+          </Card>
+
+          {/* Voorbeeldauto */}
+          <Card>
+            <SectionTitle>Voorbeeldberekening laden</SectionTitle>
+            <div style={{ fontSize: 13, color: "#666", marginBottom: 12, lineHeight: 1.7 }}>
+              Laad een complete voorbeeldberekening om te zien wat de app voor jou kan betekenen.
+              Het voorbeeld is gebaseerd op een Peugeot 508 Diesel uit 2013, met 11 jaar werkelijke
+              onderhouds-, reparatie- en verzekeringsdata, CBS-dieselprijzen en MRB-posten.
+            </div>
+            <div style={{ padding: "10px 14px", background: "#f7f6f2", borderRadius: 8, fontSize: 13, marginBottom: 14, display: "flex", gap: 20, flexWrap: "wrap" }}>
+              <span>🚗 Peugeot 508 Diesel 2013</span>
+              <span>📅 2015–2027</span>
+              <span>🛣 18.000 km/jr</span>
+              <span>💰 aanschaf €18.500</span>
+            </div>
+            <button
+              onClick={() => {
+                if (window.confirm("Voorbeeldauto toevoegen als nieuwe auto? Je huidige auto blijft behouden.")) {
+                  const id = nieuweAutoId();
+                  // Parseer voorbeeld CSV naar kosten
+                  const regels = VOORBEELD_CSV.trim().split("\n").filter(l => l.trim() && !l.startsWith("datum"));
+                  let kid = Date.now();
+                  const kosten = regels.map(r => {
+                    const [datum, cat, bedrag, km, omschr] = r.split(";");
+                    const cm = COST_CATEGORIES.find(c => c.id === cat?.trim().toLowerCase());
+                    return { id: kid++, datum: datum?.trim(), categorie: cm?.id||"overig", bedrag: Number(bedrag), km: km?Number(km):null, omschrijving: omschr?.trim()||"", automatisch: false };
+                  });
+                  const nieuweAuto = { id, ...defaultState(), ...VOORBEELD_STATE, kosten };
+                  setStorage(s => ({ autos: [...s.autos, nieuweAuto], actiefId: id }));
+                }
+              }}
+              style={{ background: COLORS.success, color: "#fff", border: "none", borderRadius: 6, padding: "10px 20px", cursor: "pointer", fontWeight: 500, fontSize: 14 }}>
+              + Voorbeeldauto toevoegen
+            </button>
+          </Card>
+
         </div>
       )}
 
@@ -2790,54 +3018,6 @@ export default function App() {
               </Card>
             );
           })()}
-        </div>
-      )}
-
-      {/* ══ TAB IMPORT ══ */}
-      {tab === "import" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-          <Card>
-            <SectionTitle>CSV importeren</SectionTitle>
-            <div style={{ fontSize: 13, color: "#999", marginBottom: 10, lineHeight: 1.7 }}>
-              Formaat: <code style={{ background: "#f7f6f2", padding: "2px 6px", borderRadius: 4, fontSize: 12 }}>datum;categorie;bedrag;km;omschrijving</code><br />
-              Categorieën: {COST_CATEGORIES.map(c => c.id).join(", ")}
-            </div>
-            <textarea value={importText} onChange={e => setImportText(e.target.value)} rows={7}
-              placeholder={"datum;categorie;bedrag;km;omschrijving\n2024-01-10;verzekering;950;;Jaarlijkse premie\n2024-03-15;brandstof;85;62000;Tankbeurt"}
-              style={{ width: "100%", fontFamily: "monospace", fontSize: 12, padding: 10, borderRadius: 6, border: "0.5px solid #e0ddd8", background: "#fafaf8", color: "#1a1a1a", boxSizing: "border-box", resize: "vertical" }} />
-            {importError && <div style={{ color: COLORS.danger, fontSize: 13, marginTop: 6 }}>⚠ {importError}</div>}
-            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-              <button onClick={handleImport} style={{ background: COLORS.primary, color: "#fff", border: "none", borderRadius: 6, padding: "9px 18px", cursor: "pointer", fontWeight: 500 }}>Importeren</button>
-              <button onClick={() => setImportText("")} style={{ background: "none", border: "0.5px solid #e0ddd8", borderRadius: 6, padding: "9px 14px", cursor: "pointer", color: "#999" }}>Wissen</button>
-            </div>
-          </Card>
-          <Card>
-            <SectionTitle>Export naar CSV</SectionTitle>
-            <textarea readOnly rows={Math.min(alleKosten.length + 2, 14)} value={exportCSV}
-              style={{ width: "100%", fontFamily: "monospace", fontSize: 12, padding: 10, borderRadius: 6, border: "0.5px solid #e0ddd8", background: "#fafaf8", color: "#888", boxSizing: "border-box" }} />
-            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-              <button
-                onClick={() => {
-                  const blob = new Blob([exportCSV], { type: "text/csv;charset=utf-8;" });
-                  const url  = URL.createObjectURL(blob);
-                  const a    = document.createElement("a");
-                  const naam = `autokosten_${(state.merk || "auto").toLowerCase()}_${new Date().toISOString().slice(0,10)}.csv`;
-                  a.href = url; a.download = naam; a.click();
-                  URL.revokeObjectURL(url);
-                }}
-                style={{ background: COLORS.primary, color: "#fff", border: "none", borderRadius: 6, padding: "9px 18px", cursor: "pointer", fontWeight: 500 }}>
-                ⬇ Opslaan als bestand
-              </button>
-              <button
-                onClick={() => navigator.clipboard?.writeText(exportCSV)}
-                style={{ background: "none", border: "0.5px solid #e0ddd8", borderRadius: 6, padding: "9px 14px", cursor: "pointer", color: "#666" }}>
-                Kopiëren
-              </button>
-            </div>
-          </Card>
-          <div style={{ marginTop: 8, fontSize: 13, color: "#999" }}>
-            ⓘ Data beheer (wissen, backup) vind je op het tabblad <b>⚙ Beheer</b>.
-          </div>
         </div>
       )}
 
