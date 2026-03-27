@@ -2574,11 +2574,19 @@ export default function App() {
               <span style={{ fontSize: 12, color: openLeaseUitkomst ? COLORS.primary : "#bbb", transform: `rotate(${openLeaseUitkomst ? 90 : 0}deg)`, display: "inline-block", transition: "transform 0.15s" }}>▶</span>
               <span style={{ fontWeight: 500, fontSize: 14, flex: 1 }}>Berekening gemiddelde leaseprijs</span>
               <span style={{ fontSize: 13, color: "#999" }}>
-                gem. {fmt(berekenLeaseGemiddeld(Math.round(
-                  vergModus === "__lastjaar" ? 12 :
-                  vergModus === "__gem5" ? Math.min(5, bezitsjaren) * 12 :
-                  bezitsjaren * 12
-                )))} /mnd · {vergModus === "__lastjaar" ? "1 jr" : vergModus === "__gem5" ? "5 jr" : `${bezitsjaren.toFixed(1)} jr`}
+                {(() => {
+                  const mnd = Math.round(
+                    vergModus === "__lastjaar" ? 12 :
+                    vergModus === "__gem5" ? Math.min(5, verlopenJaren) * 12 :
+                    verlopenJaren * 12
+                  );
+                  const zakGem  = berekenLeaseGemiddeld(mnd);
+                  const privGem = berekenLeaseGemiddeldPriv(mnd);
+                  const heeftVerschil = leasePrivePrive !== leasePrive;
+                  return heeftVerschil
+                    ? `zak. ${fmt(zakGem)} · privé ${fmt(privGem)}/mnd`
+                    : `gem. ${fmt(zakGem)}/mnd`;
+                })()}
               </span>
             </div>
             {openLeaseUitkomst && (
@@ -2771,27 +2779,27 @@ export default function App() {
                 <div onClick={() => setOpenVerg(v => !v)} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", userSelect: "none", marginBottom: openVerg ? "1rem" : 0 }}>
                   <span style={{ fontSize: 12, color: openVerg ? COLORS.primary : "#bbb", transform: `rotate(${openVerg ? 90 : 0}deg)`, display: "inline-block", transition: "transform 0.15s" }}>▶</span>
                   <span style={{ fontWeight: 600, fontSize: 15, flex: 1 }}>Vergelijking eigen auto ⟺ leasen</span>
-                  <span style={{ fontSize: 13, color: "#999" }}>{bronLabel} · {fmt(eigenKostenMaandPeriode)}/mnd</span>
+                  {/* Resultaat in header */}
+                  {(() => {
+                    const vergMaanden = Math.round(bronJaren * 12);
+                    const leaseGem = berekenLeaseGemiddeld(vergMaanden);
+                    const verschil = eigenKostenMaandPeriode - (leaseGem + bijtellingBelasting - mobBrutoMaand);
+                    const isVoordelig = verschil < 0;
+                    const abs = fmt(Math.abs(Math.round(verschil)));
+                    return (
+                      <span style={{ fontSize: 12, color: isVoordelig ? COLORS.success : COLORS.danger, fontWeight: 500, textAlign: "right" }}>
+                        Eigen auto {abs}/mnd {isVoordelig ? "voordeliger" : "duurder"}
+                      </span>
+                    );
+                  })()}
                 </div>
                 {!openVerg ? null : (<>
 
-                {/* Compacte samenvatting */}
+                {/* Drie kolommen: eigen auto, zakelijk lease, privé lease */}
                 {(() => {
                   const vergMaanden = Math.round(bronJaren * 12);
                   const leaseGemVergperiode     = berekenLeaseGemiddeld(vergMaanden);
                   const leaseGemVergperiodePriv = berekenLeaseGemiddeldPriv(vergMaanden);
-                  return (
-                    <>
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: "1.25rem", padding: "8px 12px", background: "#f0f4f8", borderRadius: 8, fontSize: 12, alignItems: "center" }}>
-                      <span style={{ color: "#888" }}>{bronLabel} · {aantalPosten} posten · {bronJaren.toFixed(1)} jr</span>
-                      <span style={{ color: "#bbb" }}>|</span>
-                      <span>Eigen auto: <b>{fmt(kostenMaand)}/mnd</b> + afschr <b>{fmt(afschrMaandPeriode)}/mnd</b> = <b style={{ color: COLORS.primary }}>{fmt(eigenKostenMaandPeriode)}/mnd</b></span>
-                      <span style={{ color: "#bbb" }}>|</span>
-                      <span>Lease gem. over {bronJaren.toFixed(1)} jr: <b style={{ color: COLORS.lease }}>{fmt(leaseGemVergperiode)}/mnd</b></span>
-                    </div>
-
-                {/* Drie kolommen: eigen auto, zakelijk lease, privé lease */}
-                {(() => {
                   const eigenVast    = afschrMaandPeriode + (kostenMaand * (1 - variabelFractie));
                   const eigenVar     = kostenMaand * variabelFractie;
                   const eigenTotK    = eigenKostenMaandPeriode;
@@ -3030,17 +3038,13 @@ export default function App() {
                           </div>
                         );
                       })()}
+                      <div style={{ marginTop: 10, fontSize: 12, color: "#bbb", lineHeight: 1.6 }}>
+                        ⓘ Eigen auto kosten zijn gebaseerd op {bronLabel} ({aantalPosten} posten), aangevuld met gemiddelde afschrijving.
+                        Lease is een schatting — vraag altijd een offerte op. Belastingschijf: {state.belastingschijf}%.
+                      </div>
                     </>
                   );
                 })()}
-                    </>
-                  );
-                })()}
-
-                <div style={{ marginTop: 10, fontSize: 12, color: "#bbb", lineHeight: 1.6 }}>
-                  ⓘ Eigen auto kosten zijn gebaseerd op {bronLabel} ({aantalPosten} posten), aangevuld met gemiddelde afschrijving.
-                  Lease is een schatting — vraag altijd een offerte op. Belastingschijf: {state.belastingschijf}%.
-                </div>
                 </>)}
               </Card>
             );
