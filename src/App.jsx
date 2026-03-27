@@ -1,4 +1,4 @@
-// AutoKosten v2 fix42
+// AutoKosten v2 fix43
 // Multi-auto: meerdere auto-profielen, switchen via header
 
 import { useState, useEffect } from "react";
@@ -7,7 +7,7 @@ import {
   Tooltip, Legend, ResponsiveContainer, ReferenceLine, PieChart, Pie, Cell
 } from "recharts";
 
-const APP_VERSION = "v2 fix42";
+const APP_VERSION = "v2 fix43";
 const STORAGE_KEY = "autokosten_v3_multi";
 
 const COLORS = {
@@ -894,13 +894,6 @@ export default function App() {
             {state.merk && state.model ? `${state.merk} ${state.model}` : state.label || "Mijn auto"}
           </h1>
           {state.bouwjaar && <div style={{ fontSize: 13, color: "#999", marginTop: 2 }}>{state.bouwjaar} · {state.brandstof} · {state.kenteken}{state.gewichtKg ? ` · ${fmtN(state.gewichtKg)} kg` : ""}{(state.huidigeKmStand || latestKmStand) ? ` · ${fmtN(state.huidigeKmStand || latestKmStand)} km` : ""}</div>}
-        </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", width: "100%" }}>
-          <MetricCard label="Totaalkosten"  value={fmt(kostenTotNu + afschrTotNu)} sub="t/m nu · incl. afschrijving" />
-          <MetricCard label="Per maand"     value={fmt(eigenMaand)}  sub="t/m nu · incl. afschr." color={COLORS.accent} />
-          <MetricCard label="Per km"        value={fmtC(kmTotaal)}
-            sub={`t/m nu ÷ ${fmtN(Math.round(geredenKm))} km (${verlopenJaren.toFixed(1)} jr × ${fmtN(state.jaarlijkseKm)} km/jr)`}
-            color={COLORS.primary} />
         </div>
       </div>
 
@@ -2361,8 +2354,8 @@ export default function App() {
                   {(() => {
                     // Bereken vergelijkingsperiode-maanden op basis van vergModus
                     const vergJaren = vergModus === "__lastjaar" ? 1
-                      : vergModus === "__gem5" ? Math.min(5, bezitsjaren)
-                      : bezitsjaren;
+                      : vergModus === "__gem5" ? Math.min(5, verlopenJaren)
+                      : verlopenJaren; // tot_nu = aankoop t/m vandaag
                     const vergMnd = Math.round(vergJaren * 12);
 
                     // Bouw periodes-tabel voor een gegeven basisprijs
@@ -2390,35 +2383,43 @@ export default function App() {
                     return (
                       <div>
                         <div style={{ fontSize: 12, fontWeight: 600, color: "#bbb", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
-                          Leaseperiodes over {vergJaren.toFixed(1)} jaar ({vergModus === "__lastjaar" ? "vorig jaar" : vergModus === "__gem5" ? "gem. 5 jaar" : "tot nu"})
+                          Leaseperiodes over {vergJaren.toFixed(1)} jaar ({vergModus === "__lastjaar" ? "vorig jaar" : vergModus === "__gem5" ? "gem. 5 jaar" : "aankoop t/m nu"})
                         </div>
                         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                           <thead>
                             <tr style={{ borderBottom: "0.5px solid #e8e6e0" }}>
-                              <th style={{ textAlign: "left", padding: "4px 8px", fontWeight: 500, color: "#bbb" }}>Periode</th>
-                              <th style={{ textAlign: "left", padding: "4px 8px", fontWeight: 500, color: "#bbb" }}>Duur</th>
-                              <th style={{ textAlign: "right", padding: "4px 8px", fontWeight: 500, color: "#bbb" }}>Zakelijk/mnd</th>
-                              {heeftPriveVerschil && <th style={{ textAlign: "right", padding: "4px 8px", fontWeight: 500, color: "#bbb" }}>Privé/mnd</th>}
-                              <th style={{ textAlign: "right", padding: "4px 8px", fontWeight: 500, color: "#bbb" }}>Totaal</th>
+                              <th style={{ textAlign: "left", padding: "4px 8px", fontWeight: 500, color: "#bbb", minWidth: 120 }}>Periode</th>
+                              <th style={{ padding: "4px 8px", fontWeight: 500, color: "#bbb", textAlign: "center" }} colSpan={2}>
+                                Zakelijk
+                                <div style={{ fontSize: 10, fontWeight: 400, color: "#ccc" }}>mnd &nbsp;(totaal)</div>
+                              </th>
+                              <th style={{ padding: "4px 8px", fontWeight: 500, color: "#bbb", textAlign: "center" }} colSpan={2}>
+                                Privé
+                                <div style={{ fontSize: 10, fontWeight: 400, color: "#ccc" }}>mnd &nbsp;(totaal)</div>
+                              </th>
                             </tr>
                           </thead>
                           <tbody>
-                            {zakTabel.map((p, i) => (
-                              <tr key={p.nr} style={{ borderBottom: "0.5px solid #f5f4f0" }}>
-                                <td style={{ padding: "6px 8px", fontWeight: 500 }}>Periode {p.nr}</td>
-                                <td style={{ padding: "6px 8px", color: "#888" }}>{p.duur} mnd</td>
-                                <td style={{ padding: "6px 8px", textAlign: "right", color: COLORS.lease, fontWeight: 500 }}>{fmt(p.maandprijs)}</td>
-                                {heeftPriveVerschil && <td style={{ padding: "6px 8px", textAlign: "right", color: COLORS.accent, fontWeight: 500 }}>{fmt(privTabel[i]?.maandprijs)}</td>}
-                                <td style={{ padding: "6px 8px", textAlign: "right" }}>{fmt(p.totaal)}</td>
-                              </tr>
-                            ))}
+                            {zakTabel.map((p, i) => {
+                              const pv = privTabel[i];
+                              return (
+                                <tr key={p.nr} style={{ borderBottom: "0.5px solid #f5f4f0" }}>
+                                  <td style={{ padding: "6px 8px", fontWeight: 500 }}>Periode {p.nr} <span style={{ color: "#bbb", fontWeight: 400 }}>({p.duur} mnd)</span></td>
+                                  <td style={{ padding: "6px 8px", textAlign: "right", color: COLORS.lease, fontWeight: 600 }}>{fmt(p.maandprijs)}</td>
+                                  <td style={{ padding: "6px 8px", textAlign: "left", color: "#aaa", fontSize: 12 }}>({fmt(p.totaal)})</td>
+                                  <td style={{ padding: "6px 8px", textAlign: "right", color: COLORS.accent, fontWeight: 600 }}>{pv ? fmt(pv.maandprijs) : fmt(p.maandprijs)}</td>
+                                  <td style={{ padding: "6px 8px", textAlign: "left", color: "#aaa", fontSize: 12 }}>({pv ? fmt(pv.totaal) : fmt(p.totaal)})</td>
+                                </tr>
+                              );
+                            })}
                           </tbody>
                           <tfoot>
                             <tr style={{ borderTop: "1px solid #e0ddd8", background: "#f7f6f2" }}>
-                              <td colSpan={2} style={{ padding: "7px 8px", fontWeight: 600 }}>Gewogen gemiddelde</td>
-                              <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 700, color: COLORS.lease, fontSize: 15 }}>{fmt(zakGem)}/mnd</td>
-                              {heeftPriveVerschil && <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 700, color: COLORS.accent, fontSize: 15 }}>{fmt(privGem)}/mnd</td>}
-                              <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 600 }}>{fmt(zakTabel.reduce((s, p) => s + p.totaal, 0))}</td>
+                              <td style={{ padding: "7px 8px", fontWeight: 600 }}>Gewogen gemiddelde</td>
+                              <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 700, color: COLORS.lease }}>{fmt(zakGem)}</td>
+                              <td style={{ padding: "7px 8px", color: "#aaa", fontSize: 12 }}>({fmt(zakGem * vergMnd)})</td>
+                              <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 700, color: COLORS.accent }}>{fmt(privGem)}</td>
+                              <td style={{ padding: "7px 8px", color: "#aaa", fontSize: 12 }}>({fmt(privGem * vergMnd)})</td>
                             </tr>
                           </tfoot>
                         </table>
