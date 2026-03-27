@@ -1011,9 +1011,33 @@ export default function App() {
       {/* Header: actieve auto */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "1.5rem", flexWrap: "wrap", gap: 12 }}>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.1em", color: "#bbb", textTransform: "uppercase", marginBottom: 4 }}>
-            AutoKosten {APP_VERSION}
-            {saveFlash && <span style={{ marginLeft: 12, color: COLORS.success, fontWeight: 400 }}>✓ opgeslagen</span>}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+            {/* Logo */}
+            <svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect width="36" height="36" rx="8" fill="#1B4F72"/>
+              {/* Auto body */}
+              <path d="M5 22h26v4a1 1 0 01-1 1H6a1 1 0 01-1-1v-4z" fill="#2980B9"/>
+              <path d="M7 22l3-7h16l3 7H7z" fill="#2980B9"/>
+              <path d="M10 15l2-4h12l2 4H10z" fill="#5DADE2"/>
+              {/* Ramen */}
+              <rect x="12" y="15" width="5" height="4" rx="1" fill="#AED6F1" opacity="0.9"/>
+              <rect x="19" y="15" width="5" height="4" rx="1" fill="#AED6F1" opacity="0.9"/>
+              {/* Wielen */}
+              <circle cx="11" cy="24" r="3" fill="#1a1a1a"/>
+              <circle cx="11" cy="24" r="1.5" fill="#7F8C8D"/>
+              <circle cx="25" cy="24" r="3" fill="#1a1a1a"/>
+              <circle cx="25" cy="24" r="1.5" fill="#7F8C8D"/>
+              {/* € teken */}
+              <text x="13" y="12" fontSize="6" fill="#F0B429" fontWeight="bold" fontFamily="system-ui">€</text>
+              {/* ? teken */}
+              <text x="20" y="12" fontSize="6" fill="#F0B429" fontWeight="bold" fontFamily="system-ui">?</text>
+            </svg>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.1em", color: "#bbb", textTransform: "uppercase" }}>
+                AutoKosten {APP_VERSION}
+                {saveFlash && <span style={{ marginLeft: 12, color: COLORS.success, fontWeight: 400 }}>✓ opgeslagen</span>}
+              </div>
+            </div>
           </div>
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 600, wordBreak: "break-word" }}>
             {state.merk && state.model ? `${state.merk} ${state.model}` : state.label || "Mijn auto"}
@@ -2655,29 +2679,25 @@ export default function App() {
                     );
                   })()}
 
-                  {/* Bijtelling + netto */}
+                  {/* Bijtelling als tabel onder gewogen gemiddelde */}
                   <div style={{ borderTop: "0.5px solid #e8e6e0", paddingTop: 10 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
-                      <span style={{ color: "#999" }}>Bijtelling ({state.bijtellingPct}% van {fmt(state.cataloguswaarde)})</span>
-                      <span>{fmt(bijtellingMaand)}/mnd</span>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                      <tbody>
+                        <tr style={{ color: "#999" }}>
+                          <td style={{ padding: "4px 8px" }}>Bijtelling ({state.bijtellingPct}% van {fmt(state.cataloguswaarde)})</td>
+                          <td style={{ padding: "4px 8px", textAlign: "right" }}>{fmt(bijtellingMaand)}/mnd</td>
+                          <td style={{ padding: "4px 8px", textAlign: "right", color: "#ccc" }}>—</td>
+                        </tr>
+                        <tr>
+                          <td style={{ padding: "4px 8px", color: "#999" }}>Belasting bijtelling ({state.belastingschijf}%)</td>
+                          <td style={{ padding: "4px 8px", textAlign: "right", color: COLORS.danger, fontWeight: 500 }}>+ {fmt(bijtellingBelasting)}/mnd</td>
+                          <td style={{ padding: "4px 8px", textAlign: "right", color: "#ccc" }}>—</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                    <div style={{ fontSize: 11, color: "#bbb", marginTop: 4, paddingLeft: 8 }}>
+                      Bijtelling geldt alleen voor zakelijk lease · privé lease heeft geen bijtelling
                     </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 2 }}>
-                      <span style={{ color: "#999" }}>Belasting op bijtelling ({state.belastingschijf}%)</span>
-                      <span style={{ color: COLORS.danger }}>+ {fmt(bijtellingBelasting)}/mnd</span>
-                    </div>
-                  </div>
-                  <div style={{ background: "#f7f6f2", borderRadius: 8, padding: "10px 14px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
-                      <span style={{ color: "#666" }}>Eerste periode + bijtelling</span>
-                      <span style={{ fontWeight: 500, color: COLORS.danger }}>{fmt(leaseMaandNetto)}/mnd</span>
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, fontWeight: 600 }}>
-                      <span>Gem. zakelijk over gekozen periode + bijtelling</span>
-                      <span style={{ color: COLORS.danger }}>{fmt(berekenLeaseGemiddeld(Math.round(
-                        (vergModus === "__lastjaar" ? 1 : vergModus === "__gem5" ? Math.min(5, bezitsjaren) : bezitsjaren) * 12
-                      )) + bijtellingBelasting)}/mnd</span>
-                    </div>
-                    <div style={{ fontSize: 11, color: "#bbb", marginTop: 4 }}>incl. indexatie + belasting bijtelling, excl. vergoedingen</div>
                   </div>
                 </div>
               </div>
@@ -2743,7 +2763,7 @@ export default function App() {
               <Card>
                 <div onClick={() => setOpenVerg(v => !v)} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", userSelect: "none", marginBottom: openVerg ? "1rem" : 0 }}>
                   <span style={{ fontSize: 12, color: openVerg ? COLORS.primary : "#bbb", transform: `rotate(${openVerg ? 90 : 0}deg)`, display: "inline-block", transition: "transform 0.15s" }}>▶</span>
-                  <span style={{ fontWeight: 600, fontSize: 15, flex: 1 }}>Vergelijking eigen auto met leaseauto</span>
+                  <span style={{ fontWeight: 600, fontSize: 15, flex: 1 }}>Vergelijking eigen auto ⟺ leasen</span>
                   <span style={{ fontSize: 13, color: "#999" }}>{bronLabel} · {fmt(eigenKostenMaandPeriode)}/mnd</span>
                 </div>
                 {!openVerg ? null : (<>
