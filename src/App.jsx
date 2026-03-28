@@ -2473,7 +2473,33 @@ export default function App() {
       {tab === "lease" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
 
-          {/* Lease parameters — inklapbaar */}
+          {/* Vergelijkingsperiode — bovenaan als eigen blokje */}
+          <div style={{ background: "#f0f4ff", border: `0.5px solid ${COLORS.primary}30`, borderRadius: 12, padding: "12px 1.25rem" }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "#1B4F72", marginBottom: 8 }}>
+              Vergelijkingsperiode
+            </div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {[
+                { id: "__lastjaar", label: `Vorig jaar (${nu.getFullYear() - 1})` },
+                { id: "__gem5",     label: "Gem. 5 jaar" },
+                { id: "tot_nu",     label: "Tot nu (volledig bezit)" },
+              ].map(m => (
+                <button key={m.id} onClick={() => setVergPeriodeStart(m.id)}
+                  style={{
+                    padding: "5px 14px", fontSize: 12, borderRadius: 20,
+                    border: vergModus === m.id ? `1.5px solid ${COLORS.primary}` : "0.5px solid #e0ddd8",
+                    background: vergModus === m.id ? COLORS.primary : "#fff",
+                    color: vergModus === m.id ? "#fff" : "#666",
+                    cursor: "pointer", fontWeight: vergModus === m.id ? 600 : 400,
+                  }}>{m.label}</button>
+              ))}
+            </div>
+            <div style={{ fontSize: 11, color: "#1B4F72", opacity: 0.6, marginTop: 6 }}>
+              Bepaalt de basis voor eigen auto én het gewogen leasegemiddelde
+            </div>
+          </div>
+
+          {/* Lease parameters — inklapbaar, compact */}
           <div style={{ background: "#fff", border: "0.5px solid #e0ddd8", borderRadius: 12, overflow: "hidden" }}>
             <div onClick={() => setOpenLeaseParams(v => !v)}
               style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 1.25rem", cursor: "pointer", userSelect: "none", background: openLeaseParams ? "#fff" : "#fafaf8" }}>
@@ -2483,95 +2509,73 @@ export default function App() {
             </div>
             {openLeaseParams && (
               <div style={{ padding: "0 1.25rem 1.25rem" }}>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+                {/* Rij 1: basisvelden compact 2-koloms */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 12px", marginTop: 12 }}>
                   {[
-                    { label: "Cataloguswaarde (€)", key: "cataloguswaarde", type: "number" },
-                    { label: "Looptijd (maanden)",  key: "leaseLooptijd",   type: "number" },
-                    { label: "Km per jaar",          key: "leaseKm",         type: "number" },
-                    { label: "Aanbetaling (€)",      key: "leaseAanbetaling",type: "number" },
+                    { label: "Cataloguswaarde (€)", key: "cataloguswaarde" },
+                    { label: "Looptijd (maanden)",  key: "leaseLooptijd"   },
+                    { label: "Km per jaar",          key: "leaseKm"         },
+                    { label: "Aanbetaling (€)",      key: "leaseAanbetaling"},
                   ].map(f => (
-                    <div key={f.key} style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 150px" }}>
-                      <label style={{ fontSize: 12, color: "#999" }}>{f.label}</label>
-                      <input type={f.type} value={state[f.key] ?? ""}
+                    <div key={f.key}>
+                      <label style={{ fontSize: 11, color: "#999", display: "block", marginBottom: 2 }}>{f.label}</label>
+                      <input type="number" value={state[f.key] ?? ""}
                         onChange={e => set(f.key, Number(e.target.value))}
                         style={{ width: "100%" }} />
                     </div>
                   ))}
-                  {/* Handmatig leasebedrag 1e periode */}
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 150px" }}>
-                    <label style={{ fontSize: 12, color: "#999" }}>Zakelijk lease 1e periode (€/mnd)</label>
-                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                      <input type="number" placeholder={`schatting: ${leasePriveBerekend}`}
+                </div>
+
+                {/* Rij 2: leasebedragen + bijtelling compact */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "6px 12px", marginTop: 8 }}>
+                  <div>
+                    <label style={{ fontSize: 11, color: "#999", display: "block", marginBottom: 2 }}>Zakelijk 1e periode (€/mnd)</label>
+                    <div style={{ display: "flex", gap: 4 }}>
+                      <input type="number" placeholder={`${leasePriveBerekend}`}
                         value={state.leaseBedragHandmatig || ""}
                         onChange={e => set("leaseBedragHandmatig", e.target.value ? Number(e.target.value) : null)}
-                        style={{ flex: 1 }} />
-                      {state.leaseBedragHandmatig && (
-                        <button onClick={() => set("leaseBedragHandmatig", null)}
-                          style={{ fontSize: 11, background: "none", border: "0.5px solid #ccc", borderRadius: 4, padding: "4px 8px", cursor: "pointer", color: "#999" }}>✕</button>
-                      )}
-                    </div>
-                    <div style={{ fontSize: 11, color: state.leaseBedragHandmatig ? COLORS.primary : "#bbb" }}>
-                      {state.leaseBedragHandmatig ? `Handmatig: ${fmt(leasePrive)}/mnd` : `Schatting: ${fmt(leasePriveBerekend)}/mnd`}
+                        style={{ flex: 1, minWidth: 0 }} />
+                      {state.leaseBedragHandmatig && <button onClick={() => set("leaseBedragHandmatig", null)}
+                        style={{ fontSize: 10, background: "none", border: "0.5px solid #ccc", borderRadius: 3, padding: "2px 5px", cursor: "pointer", color: "#999" }}>✕</button>}
                     </div>
                   </div>
-                  {/* Privé leasebedrag handmatig */}
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 150px" }}>
-                    <label style={{ fontSize: 12, color: "#999" }}>Privé lease 1e periode (€/mnd)</label>
-                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                      <input type="number" placeholder={`zelfde als zakelijk: ${leasePrive}`}
+                  <div>
+                    <label style={{ fontSize: 11, color: "#999", display: "block", marginBottom: 2 }}>Privé 1e periode (€/mnd)</label>
+                    <div style={{ display: "flex", gap: 4 }}>
+                      <input type="number" placeholder={`${leasePrive}`}
                         value={state.leasePriveBedragHandmatig || ""}
                         onChange={e => set("leasePriveBedragHandmatig", e.target.value ? Number(e.target.value) : null)}
-                        style={{ flex: 1 }} />
-                      {state.leasePriveBedragHandmatig && (
-                        <button onClick={() => set("leasePriveBedragHandmatig", null)}
-                          style={{ fontSize: 11, background: "none", border: "0.5px solid #ccc", borderRadius: 4, padding: "4px 8px", cursor: "pointer", color: "#999" }}>✕</button>
-                      )}
-                    </div>
-                    <div style={{ fontSize: 11, color: state.leasePriveBedragHandmatig ? COLORS.lease : "#bbb" }}>
-                      {state.leasePriveBedragHandmatig ? `Handmatig: ${fmt(leasePrivePrive)}/mnd` : `Zelfde als zakelijk: ${fmt(leasePrive)}/mnd`}
+                        style={{ flex: 1, minWidth: 0 }} />
+                      {state.leasePriveBedragHandmatig && <button onClick={() => set("leasePriveBedragHandmatig", null)}
+                        style={{ fontSize: 10, background: "none", border: "0.5px solid #ccc", borderRadius: 3, padding: "2px 5px", cursor: "pointer", color: "#999" }}>✕</button>}
                     </div>
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: "1 1 150px" }}>
-                    <label style={{ fontSize: 12, color: "#999" }}>Bijtelling (%)</label>
+                  <div>
+                    <label style={{ fontSize: 11, color: "#999", display: "block", marginBottom: 2 }}>Bijtelling (%)</label>
                     <select value={state.bijtellingPct} onChange={e => set("bijtellingPct", Number(e.target.value))} style={{ width: "100%" }}>
-                      <option value={16}>16% — volledig elektrisch</option>
-                      <option value={22}>22% — standaard</option>
-                      <option value={35}>35% — ouder dan 15 jaar</option>
+                      <option value={16}>16% elektr.</option>
+                      <option value={22}>22% standaard</option>
+                      <option value={35}>35% oud</option>
                     </select>
                   </div>
                 </div>
 
-                {/* Indexatie per periode */}
-                <div style={{ marginTop: 14, padding: "12px 14px", background: "#f7f6f2", borderRadius: 8 }}>
-                  <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 6 }}>Indexatie bij nieuwe leaseperiode</div>
-                  <div style={{ fontSize: 13, color: "#666", marginBottom: 10, lineHeight: 1.6 }}>
-                    Na elke looptijd van {state.leaseLooptijd || 48} maanden wordt een nieuw leasecontract afgesloten.
-                    Stel hier in hoeveel duurder dat contract wordt — bijv. 10% stijging door inflatie en hogere catalogusprijzen.
-                    Dit wordt gebruikt in de cumulatieve grafiek zodat je een eerlijke vergelijking maakt over meerdere leaseperiodes.
+                {/* Indexatie compact */}
+                <div style={{ marginTop: 10, padding: "8px 12px", background: "#f7f6f2", borderRadius: 8, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                  <div style={{ fontSize: 12, color: "#666", fontWeight: 500 }}>Indexatie per periode</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <input type="number" step="1" value={state.leaseStijgingPct ?? 10}
+                      onChange={e => set("leaseStijgingPct", Number(e.target.value))}
+                      style={{ width: 56 }} />
+                    <span style={{ fontSize: 12, color: "#999" }}>%</span>
                   </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                      <label style={{ fontSize: 12, color: "#999" }}>Stijging per periode (%)</label>
-                      <input type="number" step="1" placeholder="10" value={state.leaseStijgingPct ?? 10}
-                        onChange={e => set("leaseStijgingPct", Number(e.target.value))}
-                        style={{ width: 100 }} />
-                    </div>
-                    <div style={{ fontSize: 13, color: "#666", flex: 1 }}>
-                      {(() => {
-                        const mnd    = Number(state.leaseLooptijd) || 48;
-                        const pct    = (Number(state.leaseStijgingPct) || 10) / 100;
-                        const basis  = leasePrive;
-                        const p2     = Math.round(basis * (1 + pct));
-                        const p3     = Math.round(basis * Math.pow(1 + pct, 2));
-                        return (
-                          <span>
-                            Periode 1: <b>{fmt(basis)}/mnd</b>
-                            {" → "}Periode 2 (+{mnd} mnd): <b>{fmt(p2)}/mnd</b>
-                            {" → "}Periode 3: <b>{fmt(p3)}/mnd</b>
-                          </span>
-                        );
-                      })()}
-                    </div>
+                  <div style={{ fontSize: 12, color: "#888", flex: 1 }}>
+                    {(() => {
+                      const pct = (Number(state.leaseStijgingPct) || 10) / 100;
+                      const p2 = Math.round(leasePrive * (1 + pct));
+                      const p3 = Math.round(leasePrive * Math.pow(1 + pct, 2));
+                      return `P1: ${fmt(leasePrive)} → P2: ${fmt(p2)} → P3: ${fmt(p3)}/mnd`;
+                    })()}
                   </div>
                 </div>
               </div>
@@ -2603,30 +2607,6 @@ export default function App() {
             {openLeaseUitkomst && (
               <div style={{ padding: "0 1.25rem 1.25rem" }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 12 }}>
-
-                  {/* Periode-keuze */}
-                  <div style={{ background: "#f0f4ff", borderRadius: 8, padding: "10px 14px" }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: "#1B4F72", marginBottom: 8 }}>
-                      Vergelijkingsperiode — bepaalt de basis voor eigen auto én het gewogen leasegemiddelde
-                    </div>
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                      {[
-                        { id: "__lastjaar", label: `Vorig jaar (${nu.getFullYear() - 1})` },
-                        { id: "__gem5",     label: "Gem. 5 jaar" },
-                        { id: "tot_nu",     label: "Tot nu (volledig bezit)" },
-                      ].map(m => (
-                        <button key={m.id}
-                          onClick={() => setVergPeriodeStart(m.id)}
-                          style={{
-                            padding: "5px 14px", fontSize: 12, borderRadius: 20,
-                            border: vergModus === m.id ? `1.5px solid ${COLORS.primary}` : "0.5px solid #e0ddd8",
-                            background: vergModus === m.id ? COLORS.primary : "#fff",
-                            color: vergModus === m.id ? "#fff" : "#666",
-                            cursor: "pointer", fontWeight: vergModus === m.id ? 600 : 400,
-                          }}>{m.label}</button>
-                      ))}
-                    </div>
-                  </div>
 
                   {/* Periodes tabel — twee kolommen: zakelijk + privé */}
                   {(() => {
@@ -2793,14 +2773,23 @@ export default function App() {
                   {/* Resultaat in header */}
                   {(() => {
                     const vergMaanden = Math.round(bronJaren * 12);
-                    const leaseGem = berekenLeaseGemiddeld(vergMaanden);
-                    const verschil = eigenKostenMaandPeriode - (leaseGem + bijtellingBelasting - mobBrutoMaand);
-                    const isVoordelig = verschil < 0;
-                    const abs = fmt(Math.abs(Math.round(verschil)));
+                    const zakGem  = berekenLeaseGemiddeld(vergMaanden);
+                    const privGem = berekenLeaseGemiddeldPriv(vergMaanden);
+                    const eigenNetto = eigenKostenMaandPeriode - totaalVergNetto;
+                    const zakNetto   = zakGem + bijtellingBelasting - mobBrutoMaand;
+                    const privNetto  = privGem - totaalVergNetto;
+                    const diffZak    = eigenNetto - zakNetto;
+                    const diffPriv   = eigenNetto - privNetto;
+                    const fmtDiff = (d) => `${fmt(Math.abs(Math.round(d)))} ${d < 0 ? "goedkoper" : "duurder"}`;
                     return (
-                      <span style={{ fontSize: 12, color: isVoordelig ? COLORS.success : COLORS.danger, fontWeight: 500, textAlign: "right" }}>
-                        Eigen auto {abs}/mnd {isVoordelig ? "voordeliger" : "duurder"}
-                      </span>
+                      <div style={{ textAlign: "right", fontSize: 11, lineHeight: 1.5 }}>
+                        <div style={{ color: diffZak < 0 ? COLORS.success : COLORS.danger, fontWeight: 500 }}>
+                          Eigen auto {fmtDiff(diffZak)} dan zak.
+                        </div>
+                        <div style={{ color: diffPriv < 0 ? COLORS.success : COLORS.danger, fontWeight: 500 }}>
+                          Eigen auto {fmtDiff(diffPriv)} dan privé
+                        </div>
+                      </div>
                     );
                   })()}
                 </div>
@@ -3012,7 +3001,7 @@ export default function App() {
                               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
                                 <span style={{ fontWeight: 500 }}>{c.label}</span>
                                 <span style={{ fontWeight: 600, color: isVoordeel ? COLORS.success : "#1a1a1a" }}>
-                                  {isVoordeel ? `+ ${f2(c.voordeel)} uitbetaald` : `${f2(c.netto)} betalen`}
+                                  {isVoordeel ? `+ ${f2(c.voordeel)} uitbetaald ${eenheid}` : `${f2(c.netto)} betalen ${eenheid}`}
                                 </span>
                               </div>
                               <div style={{ height: 10, background: "#f0ede8", borderRadius: 5 }}>
