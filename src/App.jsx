@@ -646,7 +646,7 @@ export default function App() {
   const [vergPeriodeStart, setVergPeriodeStart] = useState("tot_nu");
   const vergModus = vergPeriodeStart === "__lastjaar" ? "__lastjaar" : vergPeriodeStart === "__gem5" ? "__gem5" : vergPeriodeStart === "tot_nu" ? "tot_nu" : "handmatig";
   const [samPeriode, setSamPeriode] = useState("gem_aankoop");
-  const [perMaand, setPerMaand] = useState(true);
+  const [perMaand, setPerMaand] = useState("maand");
   const [openSec, setOpenSec] = useState({ kosten: false, vergoed: false });
   const [showNieuwKost, setShowNieuwKost] = useState(false);
   const [verzTab, setVerzTab] = useState("verz");
@@ -2780,7 +2780,7 @@ export default function App() {
                     const privNetto  = privGem - totaalVergNetto;
                     const diffZak    = eigenNetto - zakNetto;
                     const diffPriv   = eigenNetto - privNetto;
-                    const fmtDiff = (d) => `${fmt(Math.abs(Math.round(d)))} ${d < 0 ? "goedkoper" : "duurder"}`;
+                    const fmtDiff = (d) => `${fmt(Math.abs(Math.round(d)))} p/mnd ${d < 0 ? "goedkoper" : "duurder"}`;
                     return (
                       <div style={{ textAlign: "right", fontSize: 11, lineHeight: 1.5 }}>
                         <div style={{ color: diffZak < 0 ? COLORS.success : COLORS.danger, fontWeight: 500 }}>
@@ -2845,8 +2845,8 @@ export default function App() {
                   const minEff      = Math.min(...effectief);
                   const maxNetto    = Math.max(...cols.map(c => c.netto), 1);
 
-                  const f2 = (v) => perMaand ? fmt(v) : fmt(v * 12);
-                  const eenheid = perMaand ? "/mnd" : "/jaar";
+                  const f2 = (v) => perMaand === "maand" ? fmt(v) : perMaand === "jaar" ? fmt(v * 12) : fmt(v * Math.round(bronJaren * 12));
+                  const eenheid = perMaand === "maand" ? "/mnd" : perMaand === "jaar" ? "/jaar" : `/${Math.round(bronJaren * 12)} mnd`;
 
                   // Uitklapbare sectie helper — gebruik outer state
                   const toggleSec = (s) => setOpenSec(p => ({ ...p, [s]: !p[s] }));
@@ -2901,14 +2901,18 @@ export default function App() {
 
                   return (
                     <>
-                      {/* Toggle mnd/jaar */}
+                      {/* Toggle mnd/jaar/periode */}
                       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
                         <div style={{ display: "inline-flex", border: "0.5px solid #e0ddd8", borderRadius: 6, overflow: "hidden" }}>
-                          {[["maand", "Per maand"], ["jaar", "Per jaar"]].map(([id, lbl]) => (
-                            <button key={id} onClick={() => setPerMaand(id === "maand")}
+                          {[
+                            ["maand", "Per maand"],
+                            ["jaar",  "Per jaar"],
+                            ["periode", `Totaal ${bronLabel}`],
+                          ].map(([id, lbl]) => (
+                            <button key={id} onClick={() => setPerMaand(id)}
                               style={{ padding: "5px 14px", fontSize: 12, fontWeight: 500, border: "none", cursor: "pointer",
-                                background: (id === "maand") === perMaand ? "#1a1a1a" : "transparent",
-                                color:      (id === "maand") === perMaand ? "#fff"    : "#666" }}>
+                                background: perMaand === id ? "#1a1a1a" : "transparent",
+                                color:      perMaand === id ? "#fff"    : "#666" }}>
                               {lbl}
                             </button>
                           ))}
