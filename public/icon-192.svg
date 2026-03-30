@@ -1,0 +1,17 @@
+<svg width="192" height="192" viewBox="0 0 192 192" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="192" height="192" rx="40" fill="#1B4F72"/>
+  <path d="M20 118 L20 98 Q20 92 26 92 L166 92 Q172 92 172 98 L172 118 Q172 124 166 124 L26 124 Q20 124 20 118 Z" fill="#2980B9"/>
+  <path d="M44 92 Q54 56 68 50 L128 50 Q142 56 152 92 Z" fill="#2980B9"/>
+  <path d="M120 92 Q128 62 136 54 L148 56 Q154 62 152 92 Z" fill="#AED6F1" opacity="0.85"/>
+  <path d="M72 92 Q70 62 72 54 L88 50 L91 92 Z" fill="#AED6F1" opacity="0.85"/>
+  <path d="M91 92 L94 50 L120 50 L120 92 Z" fill="#AED6F1" opacity="0.85"/>
+  <circle cx="48" cy="130" r="20" fill="#111"/>
+  <circle cx="48" cy="130" r="11" fill="#444"/>
+  <circle cx="48" cy="130" r="4" fill="#888"/>
+  <circle cx="144" cy="130" r="20" fill="#111"/>
+  <circle cx="144" cy="130" r="11" fill="#444"/>
+  <circle cx="144" cy="130" r="4" fill="#888"/>
+  <ellipse cx="168" cy="105" rx="8" ry="5" fill="#FFF3B0" opacity="0.9"/>
+  <rect x="20" y="94" width="8" height="14" rx="3" fill="#E74C3C" opacity="0.85"/>
+  <text x="74" y="113" font-size="28" fill="#F0B429" font-weight="bold" font-family="system-ui, sans-serif">€?</text>
+</svg>
