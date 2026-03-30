@@ -683,6 +683,16 @@ export default function App() {
     return () => clearTimeout(t);
   }, [storage]);
 
+  // Android back-button: push state bij tab-wissel, popstate om in app te blijven
+  useEffect(() => {
+    window.history.pushState({ tab }, "", window.location.href);
+    const onPop = (e) => {
+      window.history.pushState({ tab }, "", window.location.href);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [tab]);
+
   // RDW
   const handleLookup = async () => {
     setRdwLoading(true); setRdwError("");
@@ -3135,6 +3145,24 @@ export default function App() {
               }}>
               Aan de slag →
             </button>
+
+            {/* DigiDave branding */}
+            <div style={{ marginTop: 20, paddingTop: 16, borderTop: "0.5px solid #f0ede8", display: "flex", justifyContent: "center" }}>
+              <svg width="120" height="33" viewBox="0 0 160 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="18" cy="22" r="5" fill="#2BA8D4"/>
+                <circle cx="8"  cy="12" r="3" fill="#F0B429"/>
+                <circle cx="28" cy="10" r="2.5" fill="#2BA8D4" opacity="0.7"/>
+                <circle cx="6"  cy="30" r="2" fill="#2BA8D4" opacity="0.6"/>
+                <circle cx="30" cy="30" r="2" fill="#F0B429" opacity="0.6"/>
+                <circle cx="18" cy="4"  r="2" fill="#2BA8D4" opacity="0.5"/>
+                <line x1="18" y1="22" x2="8"  y2="12" stroke="#2BA8D4" strokeWidth="1" opacity="0.6"/>
+                <line x1="18" y1="22" x2="28" y2="10" stroke="#2BA8D4" strokeWidth="1" opacity="0.4"/>
+                <line x1="18" y1="22" x2="6"  y2="30" stroke="#2BA8D4" strokeWidth="1" opacity="0.4"/>
+                <line x1="18" y1="22" x2="30" y2="30" stroke="#2BA8D4" strokeWidth="1" opacity="0.4"/>
+                <line x1="18" y1="22" x2="18" y2="4"  stroke="#2BA8D4" strokeWidth="1" opacity="0.3"/>
+                <text x="38" y="30" fontSize="22" fill="#1B4F72" fontWeight="300" fontFamily="system-ui, sans-serif" letterSpacing="-0.5">digidave</text>
+              </svg>
+            </div>
           </div>
         </div>
       )}
