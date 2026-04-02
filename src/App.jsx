@@ -3173,8 +3173,7 @@ export default function App() {
         <a href="/AutoKosten/privacy.html" style={{ color: "#1B4F72", textDecoration: "none" }}>Privacy</a>
         <a href="/AutoKosten/disclaimer.html" style={{ color: "#1B4F72", textDecoration: "none" }}>Disclaimer</a>
         <a href="/AutoKosten/help.html" style={{ color: "#1B4F72", textDecoration: "none" }}>Help</a>
-        <a href="https://digidaveapps.lemonsqueezy.com/checkout/buy/d279521d-3d7c-48c0-8f0c-8d0407f4a104?embed=1"
-          className="lemonsqueezy-button"
+        <a href="https://tikkie.me/pay/ek2n8kg562t65918of59"
           style={{ color: "#F0B429", textDecoration: "none", fontWeight: 500, display: "flex", alignItems: "center", gap: 5 }}
           onClick={() => localStorage.setItem("autokosten_donatie_gedaan", "1")}>
           💰 Steun AutoKosten
@@ -3218,8 +3217,7 @@ export default function App() {
             </p>
 
             {/* Donatie knop */}
-            <a href="https://digidaveapps.lemonsqueezy.com/checkout/buy/d279521d-3d7c-48c0-8f0c-8d0407f4a104?embed=1"
-              className="lemonsqueezy-button"
+            <a href="https://tikkie.me/pay/ek2n8kg562t65918of59"
               onClick={() => {
                 localStorage.setItem("autokosten_donatie_gedaan", "1");
                 setShowDonatie(false);
