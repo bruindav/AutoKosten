@@ -7,7 +7,7 @@ import {
   Tooltip, Legend, ResponsiveContainer, ReferenceLine, PieChart, Pie, Cell
 } from "recharts";
 
-const APP_VERSION = "v2 fix65";
+const APP_VERSION = "v2 fix66";
 
 const VOORBEELD_CSV = `datum;categorie;bedrag;km;omschrijving
 2026-04-10;onderhoud;567;231000;Grote onderhoudsbeurt
@@ -334,11 +334,14 @@ function berekenMRBSchatting(gewichtKg, brandstof, provincie) {
   if (!gewichtKg || Number(gewichtKg) < 100) return null;
   const opcenten = MRB_OPCENTEN[provincie?.toLowerCase()] ?? 91.5;
   const bf = (brandstof || "").toLowerCase();
+  // Volledig elektrisch of waterstof: geen MRB
+  const volledigElektrisch = (bf === "elektriciteit" || bf === "elektrisch" || bf === "waterstof");
   let basis = 0;
-  if (!bf.includes("elektrisch") && !bf.includes("waterstof")) {
+  if (!volledigElektrisch) {
     basis = mrbBenzineKwartaal(gewichtKg);
     if (bf.includes("diesel"))   basis += 96;
     else if (bf.includes("lpg")) basis += 20;
+    // hybride: geen extra toeslag bovenop basis/diesel
   }
   const metOp = basis * (1 + opcenten / 100);
   return { kwartaal: Math.round(metOp), jaarlijks: Math.round(metOp * 4), basisBedrag: Math.round(basis), opcenten };
