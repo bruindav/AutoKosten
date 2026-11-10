@@ -7,7 +7,7 @@ import {
   Tooltip, Legend, ResponsiveContainer, ReferenceLine, PieChart, Pie, Cell
 } from "recharts";
 
-const APP_VERSION = "v2 fix56";
+const APP_VERSION = "v2 fix57";
 
 const VOORBEELD_CSV = `datum;categorie;bedrag;km;omschrijving
 2026-04-10;onderhoud;567;231000;Grote onderhoudsbeurt
@@ -2004,7 +2004,8 @@ export default function App() {
                   const blob = new Blob([exportCSV], { type: "text/csv;charset=utf-8;" });
                   const url  = URL.createObjectURL(blob);
                   const a    = document.createElement("a");
-                  const naam = `autokosten_${(state.merk || "auto").toLowerCase()}_${new Date().toISOString().slice(0,10)}.csv`;
+                  const merkModel = [state.merk, state.model].filter(Boolean).join("_") || state.label || "auto";
+                  const naam = `autokosten_${merkModel.toLowerCase().replace(/\s+/g,"_")}_${new Date().toISOString().slice(0,10)}.csv`;
                   a.href = url; a.download = naam; a.click();
                   URL.revokeObjectURL(url);
                 }}
