@@ -7,7 +7,7 @@ import {
   Tooltip, Legend, ResponsiveContainer, ReferenceLine, PieChart, Pie, Cell
 } from "recharts";
 
-const APP_VERSION = "v2 fix57";
+const APP_VERSION = "v2 fix58";
 
 const VOORBEELD_CSV = `datum;categorie;bedrag;km;omschrijving
 2026-04-10;onderhoud;567;231000;Grote onderhoudsbeurt
@@ -1943,6 +1943,8 @@ export default function App() {
               <button onClick={() => { if (window.confirm("ALLE auto's en data verwijderen?")) {
                 const nieuw = { id: nieuweAutoId(), label: "Mijn auto", ...defaultState() };
                 setStorage({ autos: [nieuw], actiefId: nieuw.id });
+                localStorage.removeItem("autokosten_welcomed");
+                setShowWelcome(true);
               }}}
                 style={{ background: "none", border: "0.5px solid #ccc", color: "#999", borderRadius: 6, padding: "8px 16px", cursor: "pointer", fontSize: 13 }}>
                 Alles wissen
