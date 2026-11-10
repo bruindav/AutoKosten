@@ -40,7 +40,7 @@
   </div>
 
   <h1>Help &amp; Uitleg</h1>
-  <p><strong>Versie:</strong> v2 fix66 · <strong>Bijgewerkt:</strong> november 2026</p>
+  <p><strong>Versie:</strong> v2 fix68 · <strong>Bijgewerkt:</strong> november 2026</p>
 
   <h2>Wat doet AutoKosten?</h2>
   <p>AutoKosten helpt je inzicht te krijgen in de <strong>werkelijke kosten van je eigen auto</strong> en vergelijkt die met zakelijk en privé leasen. De app werkt volledig offline — alle data blijft in je browser.</p>
@@ -82,12 +82,17 @@
   <ul>
     <li><strong>Auto's beheren</strong> — meerdere auto's bijhouden en verwijderen. Wissel via de chips bovenaan. Naam wijzigen via het tabblad Auto.</li>
     <li><strong>Auto toevoegen</strong> — via de ➕ knop: voer naam, kenteken (automatisch RDW-opzoeken), brandstof en provincie in.</li>
-    <li><strong>Kosten importeren</strong> — kies een CSV-bestand of plak tekst. Formaat: <code>datum;categorie;bedrag;km;omschrijving</code></li>
-    <li><strong>Exporteren</strong> — download je data als CSV voor backup of gebruik in een ander profiel.</li>
+    <li><strong>Importeren</strong> — kies een JSON-bestand (volledige back-up) of een CSV-bestand (alleen kosten). JSON importeert de auto als nieuw profiel; CSV voegt kostenregels toe aan de huidige auto.</li>
+    <li><strong>Exporteren</strong> — <strong>JSON (volledig)</strong>: slaat alle autogegevens op (naam, kenteken, provincie, financieel én alle kosten). <strong>CSV</strong>: exporteert alleen de kostenregels voor gebruik in Excel.</li>
     <li><strong>Voorbeeldberekening</strong> — laad een fictieve demo-auto om de mogelijkheden te verkennen.</li>
   </ul>
 
-  <h2>CSV importeren</h2>
+  <h2>Importeren &amp; exporteren</h2>
+  <h3>JSON — volledige back-up</h3>
+  <p>De aanbevolen manier voor back-ups. Het JSON-bestand bevat alle gegevens: naam, kenteken, merk/model, bouwjaar, brandstof, provincie, financiële gegevens, MRB-instellingen én alle kostenposten. Bij importeren wordt de auto als <em>nieuw profiel</em> toegevoegd naast je bestaande auto's.</p>
+
+  <h3>CSV — alleen kosten</h3>
+  <p>Voor gebruik in Excel of om kostenregels samen te voegen. Het CSV-bestand bevat alleen de kostentabel en wordt bij importeren toegevoegd aan de <em>huidige auto</em>.</p>
   <table>
     <tr><th>Kolom</th><th>Formaat</th><th>Voorbeeld</th></tr>
     <tr><td>datum</td><td>JJJJ-MM-DD</td><td>2024-03-15</td></tr>
@@ -115,8 +120,9 @@
   <p>Data wordt opgeslagen in de <strong>localStorage</strong> van je browser. Let op:</p>
   <ul>
     <li>Private/incognito browsing slaat niets op tussen sessies.</li>
-    <li>"Browsegeschiedenis wissen" kan ook localStorage wissen — gebruik <strong>Export CSV</strong> regelmatig als backup.</li>
+    <li>"Browsegeschiedenis wissen" kan ook localStorage wissen — gebruik <strong>Exporteren → JSON (volledig)</strong> regelmatig als backup.</li>
     <li>Data is per browser en per apparaat — niet gesynchroniseerd.</li>
+    <li>Met een JSON-backup kun je je auto herstellen via Beheer → Importeren → Bestand kiezen.</li>
   </ul>
 </body>
 </html>

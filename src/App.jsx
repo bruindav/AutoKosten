@@ -7,7 +7,7 @@ import {
   Tooltip, Legend, ResponsiveContainer, ReferenceLine, PieChart, Pie, Cell
 } from "recharts";
 
-const APP_VERSION = "v2 fix67";
+const APP_VERSION = "v2 fix68";
 
 const VOORBEELD_CSV = `datum;categorie;bedrag;km;omschrijving
 2026-04-10;onderhoud;567;231000;Grote onderhoudsbeurt
@@ -1154,43 +1154,79 @@ export default function App() {
   };
 
   // Import
+  const parseerCSVRegels = (text) => {
+    const regels = text.trim().split("\n").filter(l => l.trim() && !l.startsWith("datum"));
+    let id = Date.now();
+    return regels.map(r => {
+      const [datum, cat, bedrag, km, omschr] = r.split(/[,;	]/);
+      if (!datum || isNaN(Number(bedrag))) throw new Error(`Ongeldige regel: ${r}`);
+      const cm = COST_CATEGORIES.find(c => c.id === cat?.trim().toLowerCase() || c.label.toLowerCase().includes(cat?.trim().toLowerCase()));
+      return { id: id++, datum: datum.trim(), categorie: cm?.id||"overig", bedrag: Number(bedrag), km: km?Number(km):null, omschrijving: omschr?.trim()||"", automatisch: false };
+    });
+  };
+
+  const verwerkImportTekst = (text) => {
+    setImportError("");
+    try {
+      const trimmed = text.trim();
+      // JSON-import: volledige auto
+      if (trimmed.startsWith("{") && trimmed.includes('"autokosten_export"')) {
+        const data = JSON.parse(trimmed);
+        if (data.autokosten_export !== 1) throw new Error("Onbekend exportformaat");
+        const auto = data.auto;
+        if (!auto) throw new Error("Geen autogegevens gevonden in bestand");
+        const id = nieuweAutoId();
+        const nieuweAuto = { ...defaultState(), ...auto, id, kosten: (auto.kosten || []).map((k, i) => ({ ...k, id: Date.now() + i })) };
+        setStorage(s => ({ autos: [...s.autos, nieuweAuto], actiefId: id }));
+        return `✓ Auto "${auto.label || auto.merk || "onbekend"}" geïmporteerd met ${auto.kosten?.length || 0} kostenposten`;
+      }
+      // CSV-import: alleen kosten toevoegen aan huidige auto
+      const nieuw = parseerCSVRegels(trimmed);
+      set("kosten", [...state.kosten, ...nieuw]);
+      return `✓ ${nieuw.length} kostenposten geïmporteerd`;
+    } catch (err) { setImportError(err.message); return ""; }
+  };
+
   const handleImportFile = (file) => {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (e) => {
-      setImportError("");
-      try {
-        const text = e.target.result;
-        const regels = text.trim().split("\n").filter(l => l.trim() && !l.startsWith("datum"));
-        let id = Date.now();
-        const nieuw = regels.map(r => {
-          const [datum, cat, bedrag, km, omschr] = r.split(/[,;	]/);
-          if (!datum || isNaN(Number(bedrag))) throw new Error(`Ongeldige regel: ${r}`);
-          const cm = COST_CATEGORIES.find(c => c.id === cat.trim().toLowerCase() || c.label.toLowerCase().includes(cat.trim().toLowerCase()));
-          return { id: id++, datum: datum.trim(), categorie: cm?.id||"overig", bedrag: Number(bedrag), km: km?Number(km):null, omschrijving: omschr?.trim()||"", automatisch: false };
-        });
-        set("kosten", [...state.kosten, ...nieuw]);
-        setImportText(`✓ ${nieuw.length} posten geïmporteerd`);
-      } catch (err) { setImportError(err.message); }
+      const result = verwerkImportTekst(e.target.result);
+      if (result) setImportText(result);
     };
     reader.readAsText(file);
   };
 
   const handleImport = () => {
-    setImportError("");
-    try {
-      const regels = importText.trim().split("\n").filter(l => l.trim() && !l.startsWith("datum") && !l.startsWith("✓"));
-      let id = Date.now();
-      const nieuw = regels.map(r => {
-        const [datum, cat, bedrag, km, omschr] = r.split(/[,;	]/);
-        if (!datum || isNaN(Number(bedrag))) throw new Error(`Ongeldige regel: ${r}`);
-        const cm = COST_CATEGORIES.find(c => c.id === cat.trim().toLowerCase() || c.label.toLowerCase().includes(cat.trim().toLowerCase()));
-        return { id: id++, datum: datum.trim(), categorie: cm?.id||"overig", bedrag: Number(bedrag), km: km?Number(km):null, omschrijving: omschr?.trim()||"", automatisch: false };
-      });
-      set("kosten", [...state.kosten, ...nieuw]);
-      setImportText("");
-    } catch (e) { setImportError(e.message); }
+    const tekst = importText.trim();
+    if (!tekst || tekst.startsWith("✓")) return;
+    const result = verwerkImportTekst(tekst);
+    if (result) setImportText(result);
   };
+
+  const exportJSON = JSON.stringify({
+    autokosten_export: 1,
+    exportDatum: new Date().toISOString().slice(0, 10),
+    auto: {
+      label: state.label, merk: state.merk, model: state.model, bouwjaar: state.bouwjaar,
+      brandstof: state.brandstof, kenteken: state.kenteken, gewichtKg: state.gewichtKg,
+      provincie: state.provincie, aankoopprijs: state.aankoopprijs, aankoopdatum: state.aankoopdatum,
+      verwachteVerkoopdatum: state.verwachteVerkoopdatum, verwachtVerkoopprijs: state.verwachtVerkoopprijs,
+      jaarlijkseKm: state.jaarlijkseKm, kmStandAankoop: state.kmStandAankoop, huidigeKmStand: state.huidigeKmStand,
+      cataloguswaarde: state.cataloguswaarde, gemiddeldVerbruik: state.gemiddeldVerbruik,
+      brandstofPrijs: state.brandstofPrijs, brandstofAutomatisch: state.brandstofAutomatisch,
+      brandstofPrijzenPerJaar: state.brandstofPrijzenPerJaar,
+      mrbAutomatisch: state.mrbAutomatisch, mrbWerkelijkMaand: state.mrbWerkelijkMaand,
+      verzekeringAutomatisch: state.verzekeringAutomatisch, verzekeringType: state.verzekeringType,
+      verzekeringJaren: state.verzekeringJaren, pechhulpJaren: state.pechhulpJaren,
+      leaseLooptijd: state.leaseLooptijd, leaseKm: state.leaseKm, leaseAanbetaling: state.leaseAanbetaling,
+      leaseStijgingPct: state.leaseStijgingPct, bijtellingPct: state.bijtellingPct,
+      belastingschijf: state.belastingschijf, mobiliteitBrutoMaand: state.mobiliteitBrutoMaand,
+      kmVergTarief: state.kmVergTarief, kmVergKmMaand: state.kmVergKmMaand,
+      leaseBedragHandmatig: state.leaseBedragHandmatig, leasePriveBedragHandmatig: state.leasePriveBedragHandmatig,
+      kosten: alleKosten.filter(k => !k.automatisch),
+    }
+  }, null, 2);
 
   const exportCSV = "datum;categorie;bedrag;km;omschrijving\n" +
     alleKosten.map(k => `${k.datum};${k.categorie};${k.bedrag};${k.km||""};${k.omschrijving}`).join("\n");
@@ -1992,70 +2028,101 @@ export default function App() {
 
           {/* Import */}
           <Card>
-            <SectionTitle>Kosten importeren (CSV)</SectionTitle>
-            <div style={{ fontSize: 13, color: "#999", marginBottom: 10, lineHeight: 1.7 }}>
-              Formaat: <code style={{ background: "#f7f6f2", padding: "2px 6px", borderRadius: 4, fontSize: 12 }}>datum;categorie;bedrag;km;omschrijving</code><br />
-              Categorieën: {COST_CATEGORIES.map(c => c.id).join(", ")}
+            <SectionTitle>Importeren</SectionTitle>
+            <div style={{ fontSize: 13, color: "#999", marginBottom: 12, lineHeight: 1.7 }}>
+              Importeer een eerdere back-up (JSON) of voeg kostenposten toe (CSV).<br />
+              <span style={{ fontSize: 12 }}>JSON: herstelt de volledige auto als nieuw profiel. CSV: voegt kostenregels toe aan de huidige auto.</span>
             </div>
 
             {/* Bestandskiezer */}
-            <div style={{ marginBottom: 12 }}>
+            <div style={{ marginBottom: 14 }}>
               <label style={{
                 display: "inline-flex", alignItems: "center", gap: 8,
                 background: COLORS.primary, color: "#fff", borderRadius: 6,
                 padding: "9px 18px", cursor: "pointer", fontWeight: 500, fontSize: 13
               }}>
                 📂 Bestand kiezen
-                <input type="file" accept=".csv,.txt,text/csv,text/plain,application/csv" style={{ display: "none" }}
+                <input type="file" accept=".json,.csv,.txt,application/json,text/csv,text/plain,application/csv" style={{ display: "none" }}
                   onChange={e => { handleImportFile(e.target.files[0]); e.target.value = ""; }} />
               </label>
-              <span style={{ fontSize: 12, color: "#bbb", marginLeft: 10 }}>CSV of tekstbestand</span>
+              <span style={{ fontSize: 12, color: "#bbb", marginLeft: 10 }}>JSON (volledig) of CSV (kosten)</span>
             </div>
 
-            {/* Of plakken */}
-            <div style={{ fontSize: 12, color: "#bbb", marginBottom: 6 }}>Of plak CSV-tekst hier:</div>
-            <textarea value={importText} onChange={e => setImportText(e.target.value)} rows={5}
-              placeholder={"2024-01-10;verzekering;950;;Jaarlijkse premie\n2024-03-15;onderhoud;285;62000;Kleine beurt"}
-              style={{ width: "100%", fontFamily: "monospace", fontSize: 12, padding: 10, borderRadius: 6, border: "0.5px solid #e0ddd8", background: "#fafaf8", color: "#1a1a1a", boxSizing: "border-box", resize: "vertical" }} />
-            {importError && <div style={{ color: COLORS.danger, fontSize: 13, marginTop: 6 }}>⚠ {importError}</div>}
-            {importText.startsWith("✓") && <div style={{ color: COLORS.success, fontSize: 13, marginTop: 6 }}>{importText}</div>}
-            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-              <button onClick={handleImport}
-                disabled={!importText.trim() || importText.startsWith("✓")}
-                style={{ background: COLORS.primary, color: "#fff", border: "none", borderRadius: 6, padding: "9px 18px", cursor: "pointer", fontWeight: 500, opacity: (!importText.trim() || importText.startsWith("✓")) ? 0.4 : 1 }}>
-                Importeren
-              </button>
-              <button onClick={() => { setImportText(""); setImportError(""); }}
-                style={{ background: "none", border: "0.5px solid #e0ddd8", borderRadius: 6, padding: "9px 14px", cursor: "pointer", color: "#999" }}>
-                Wissen
-              </button>
+            {/* Of plakken (CSV) */}
+            <div style={{ borderTop: "0.5px solid #e0ddd8", paddingTop: 12 }}>
+              <div style={{ fontSize: 12, color: "#bbb", marginBottom: 6 }}>Of plak CSV-tekst (kosten) hier:</div>
+              <textarea value={importText} onChange={e => setImportText(e.target.value)} rows={4}
+                placeholder={"2024-01-10;verzekering;950;;Jaarlijkse premie\n2024-03-15;onderhoud;285;62000;Kleine beurt"}
+                style={{ width: "100%", fontFamily: "monospace", fontSize: 12, padding: 10, borderRadius: 6, border: "0.5px solid #e0ddd8", background: "#fafaf8", color: "#1a1a1a", boxSizing: "border-box", resize: "vertical" }} />
+              {importError && <div style={{ color: COLORS.danger, fontSize: 13, marginTop: 6 }}>⚠ {importError}</div>}
+              {importText.startsWith("✓") && <div style={{ color: COLORS.success, fontSize: 13, marginTop: 6 }}>{importText}</div>}
+              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                <button onClick={handleImport}
+                  disabled={!importText.trim() || importText.startsWith("✓")}
+                  style={{ background: COLORS.primary, color: "#fff", border: "none", borderRadius: 6, padding: "9px 18px", cursor: "pointer", fontWeight: 500, opacity: (!importText.trim() || importText.startsWith("✓")) ? 0.4 : 1 }}>
+                  Importeren
+                </button>
+                <button onClick={() => { setImportText(""); setImportError(""); }}
+                  style={{ background: "none", border: "0.5px solid #e0ddd8", borderRadius: 6, padding: "9px 14px", cursor: "pointer", color: "#999" }}>
+                  Wissen
+                </button>
+              </div>
             </div>
           </Card>
 
           {/* Export */}
           <Card>
-            <SectionTitle>Exporteren naar CSV</SectionTitle>
-            <div style={{ fontSize: 13, color: "#999", marginBottom: 10 }}>
-              Download je kostendata als CSV-bestand om te bewaren of in te laden in een andere auto.
+            <SectionTitle>Exporteren</SectionTitle>
+            <div style={{ fontSize: 13, color: "#999", marginBottom: 12 }}>
+              Sla je autogegevens op als back-up of deel ze met een ander apparaat.
             </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+
+            {/* JSON — volledige backup */}
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>Volledige back-up (JSON)</div>
+              <div style={{ fontSize: 12, color: "#999", marginBottom: 8 }}>
+                Exporteert alle autogegevens: naam, kenteken, provincie, financieel én alle kostenposten. Gebruik dit bestand om de auto terug te importeren.
+              </div>
               <button
                 onClick={() => {
-                  const blob = new Blob([exportCSV], { type: "text/csv;charset=utf-8;" });
+                  const merkModel = [state.merk, state.model].filter(Boolean).join("_") || state.label || "auto";
+                  const naam = `autokosten_${merkModel.toLowerCase().replace(/\s+/g,"_")}_${new Date().toISOString().slice(0,10)}.json`;
+                  const blob = new Blob([exportJSON], { type: "application/json;charset=utf-8;" });
                   const url  = URL.createObjectURL(blob);
                   const a    = document.createElement("a");
-                  const merkModel = [state.merk, state.model].filter(Boolean).join("_") || state.label || "auto";
-                  const naam = `autokosten_${merkModel.toLowerCase().replace(/\s+/g,"_")}_${new Date().toISOString().slice(0,10)}.csv`;
                   a.href = url; a.download = naam; a.click();
                   URL.revokeObjectURL(url);
                 }}
                 style={{ background: COLORS.primary, color: "#fff", border: "none", borderRadius: 6, padding: "9px 18px", cursor: "pointer", fontWeight: 500 }}>
-                ⬇ Download CSV
+                ⬇ Download JSON (volledig)
               </button>
-              <button onClick={() => navigator.clipboard?.writeText(exportCSV)}
-                style={{ background: "none", border: "0.5px solid #e0ddd8", borderRadius: 6, padding: "9px 14px", cursor: "pointer", color: "#666" }}>
-                Kopiëren
-              </button>
+            </div>
+
+            {/* CSV — alleen kosten */}
+            <div style={{ borderTop: "0.5px solid #e0ddd8", paddingTop: 14 }}>
+              <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>Alleen kostenposten (CSV)</div>
+              <div style={{ fontSize: 12, color: "#999", marginBottom: 8 }}>
+                Exporteert alleen de kostentabel — handig voor Excel of een rekenblad.
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button
+                  onClick={() => {
+                    const blob = new Blob([exportCSV], { type: "text/csv;charset=utf-8;" });
+                    const url  = URL.createObjectURL(blob);
+                    const a    = document.createElement("a");
+                    const merkModel = [state.merk, state.model].filter(Boolean).join("_") || state.label || "auto";
+                    const naam = `autokosten_${merkModel.toLowerCase().replace(/\s+/g,"_")}_${new Date().toISOString().slice(0,10)}.csv`;
+                    a.href = url; a.download = naam; a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                  style={{ background: "none", border: "0.5px solid #e0ddd8", borderRadius: 6, padding: "9px 18px", cursor: "pointer", color: "#555", fontWeight: 500 }}>
+                  ⬇ Download CSV
+                </button>
+                <button onClick={() => navigator.clipboard?.writeText(exportCSV)}
+                  style={{ background: "none", border: "0.5px solid #e0ddd8", borderRadius: 6, padding: "9px 14px", cursor: "pointer", color: "#666" }}>
+                  Kopiëren
+                </button>
+              </div>
             </div>
           </Card>
 
