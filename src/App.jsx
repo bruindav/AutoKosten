@@ -7,7 +7,7 @@ import {
   Tooltip, Legend, ResponsiveContainer, ReferenceLine, PieChart, Pie, Cell
 } from "recharts";
 
-const APP_VERSION = "v2 fix63";
+const APP_VERSION = "v2 fix64";
 
 const VOORBEELD_CSV = `datum;categorie;bedrag;km;omschrijving
 2026-04-10;onderhoud;567;231000;Grote onderhoudsbeurt
@@ -864,9 +864,10 @@ export default function App() {
       });
       const rdwBrandstof = d.brandstof_omschrijving || "";
       const genormBrandstof = rdwBrandstof.toLowerCase().includes("diesel") ? "Diesel"
-        : rdwBrandstof.toLowerCase().includes("elektr") ? "Elektrisch"
+        : rdwBrandstof.toLowerCase().includes("elektr") ? "Elektriciteit"
         : rdwBrandstof.toLowerCase().includes("lpg") ? "LPG"
-        : rdwBrandstof.toLowerCase().includes("hybr") ? "Hybride (benzine)"
+        : rdwBrandstof.toLowerCase().includes("hybr") && rdwBrandstof.toLowerCase().includes("diesel") ? "Hybride (Diesel/Elektrisch)"
+        : rdwBrandstof.toLowerCase().includes("hybr") ? "Hybride (Benzine/Elektrisch)"
         : rdwBrandstof ? "Benzine" : "";
       setNieuweAutoForm(f => ({
         ...f,
@@ -1660,7 +1661,10 @@ export default function App() {
                 <div>
                   {/* Provincie hoort hier */}
                   <Row label="Provincie">
-                    <select value={state.provincie} onChange={e => set("provincie", e.target.value)} style={{ flex: 1 }}>
+                    <select value={state.provincie} onChange={e => {
+                      set("provincie", e.target.value);
+                      if (state.gewichtKg) setState(s => ({ ...s, provincie: e.target.value, mrbAutomatisch: true }));
+                    }} style={{ flex: 1 }}>
                       {Object.keys(MRB_OPCENTEN).map(p => <option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
                     </select>
                   </Row>
@@ -3267,7 +3271,7 @@ export default function App() {
               <select value={nieuweAutoForm.brandstof} onChange={e => setNieuweAutoForm(f => ({ ...f, brandstof: e.target.value }))}
                 style={{ width: "100%", padding: "10px 12px", fontSize: 14, border: "1px solid #d0cdc8", borderRadius: 8, background: "#fff", outline: "none" }}>
                 <option value="">— kies brandstof —</option>
-                {["Benzine","Diesel","Elektrisch","LPG","Hybride (benzine)","Hybride (diesel)","Waterstof"].map(b => (
+                {["Benzine","Diesel","LPG","Elektriciteit","Hybride (Benzine/Elektrisch)","Hybride (Diesel/Elektrisch)","Waterstof"].map(b => (
                   <option key={b} value={b}>{b}</option>
                 ))}
               </select>
