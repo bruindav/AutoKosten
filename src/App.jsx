@@ -7,7 +7,7 @@ import {
   Tooltip, Legend, ResponsiveContainer, ReferenceLine, PieChart, Pie, Cell
 } from "recharts";
 
-const APP_VERSION = "v2 fix64";
+const APP_VERSION = "v2 fix65";
 
 const VOORBEELD_CSV = `datum;categorie;bedrag;km;omschrijving
 2026-04-10;onderhoud;567;231000;Grote onderhoudsbeurt
@@ -1662,8 +1662,7 @@ export default function App() {
                   {/* Provincie hoort hier */}
                   <Row label="Provincie">
                     <select value={state.provincie} onChange={e => {
-                      set("provincie", e.target.value);
-                      if (state.gewichtKg) setState(s => ({ ...s, provincie: e.target.value, mrbAutomatisch: true }));
+                      setState(s => ({ ...s, provincie: e.target.value, mrbAutomatisch: s.gewichtKg ? true : s.mrbAutomatisch }));
                     }} style={{ flex: 1 }}>
                       {Object.keys(MRB_OPCENTEN).map(p => <option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
                     </select>
