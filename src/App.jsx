@@ -7,107 +7,230 @@ import {
   Tooltip, Legend, ResponsiveContainer, ReferenceLine, PieChart, Pie, Cell
 } from "recharts";
 
-const APP_VERSION = "v2 fix44";
+const APP_VERSION = "v2 fix55";
 
 const VOORBEELD_CSV = `datum;categorie;bedrag;km;omschrijving
-2025-03-14;onderhoud;586.68;217191;Onderhoud groot
-2022-03-20;reparatie;3983.67;176686;Distributie en turbo vervangen
-2022-03-24;banden;197.22;170319;1 band
-2024-10-28;reparatie;2533;210828;Dynamo/ startmotor / aandrijfriem
-2023-05-31;reparatie;285.57;184215;Multiriem vervangen
-2024-01-15;onderhoud;594.58;196509;Onderhoudsbeurt klein
-2022-01-18;onderhoud;490.82;162532;Onderhoud
-2025-09-23;reparatie;273;;Raam links achter
-2025-01-20;onderhoud;30;;Apk
-2026-03-07;onderhoud;559.13;237000;Grote beurt
-2019-01-04;onderhoud;605;102300;
-2020-06-06;reparatie;183;131741;Storing oplossen
-2021-01-19;onderhoud;480;144656;Onderhoudsbeurt
-2022-09-02;reparatie;1598;172707;Gasklephuis
-2023-04-25;onderhoud;322.9;183019;
-2019-04-15;banden;49;;Wissel
-2018-10-31;banden;302;;4x banden
-2025-07-12;verzekering;179;;Pechhulp allianz
-2024-07-10;verzekering;139;;Pechhulp
-2022-07-12;verzekering;109;;Pechhulp allianz
-2024-07-19;verzekering;139;;Pechhulp allianz
-2025-12-31;brandstof;1400;;Geschat
-2024-12-31;brandstof;1400;;Geschat
-2023-03-31;brandstof;1400;;Geschat
-2022-03-26;brandstof;1400;;Geschat
-2021-03-26;brandstof;1400;;Geschat
-2019-03-26;brandstof;1400;;Geschat
-2020-03-26;brandstof;1400;;Geschat
-2018-03-18;brandstof;1300;;Geschat
-2016-01-01;wegenbelasting;552;;MRB kwartaal
-2016-03-31;wegenbelasting;552;;MRB kwartaal
-2016-06-30;wegenbelasting;552;;MRB kwartaal
-2016-09-30;wegenbelasting;552;;MRB kwartaal
-2017-01-01;wegenbelasting;552;;MRB kwartaal
-2017-03-31;wegenbelasting;552;;MRB kwartaal
-2017-06-30;wegenbelasting;552;;MRB kwartaal
-2017-09-30;wegenbelasting;552;;MRB kwartaal
-2018-01-01;wegenbelasting;552;;MRB kwartaal
-2018-03-31;wegenbelasting;552;;MRB kwartaal
-2018-06-30;wegenbelasting;552;;MRB kwartaal
-2018-09-30;wegenbelasting;552;;MRB kwartaal
-2019-01-01;wegenbelasting;552;;MRB kwartaal
-2019-03-31;wegenbelasting;552;;MRB kwartaal
-2019-06-30;wegenbelasting;552;;MRB kwartaal
-2019-09-30;wegenbelasting;552;;MRB kwartaal
-2020-01-01;wegenbelasting;552;;MRB kwartaal
-2020-03-31;wegenbelasting;552;;MRB kwartaal
-2020-06-30;wegenbelasting;552;;MRB kwartaal
-2020-09-30;wegenbelasting;552;;MRB kwartaal
-2021-01-01;wegenbelasting;552;;MRB kwartaal
-2021-03-31;wegenbelasting;552;;MRB kwartaal
-2021-06-30;wegenbelasting;552;;MRB kwartaal
-2021-09-30;wegenbelasting;552;;MRB kwartaal
-2022-01-01;wegenbelasting;552;;MRB kwartaal
-2022-03-31;wegenbelasting;552;;MRB kwartaal
-2022-06-30;wegenbelasting;552;;MRB kwartaal
-2022-09-30;wegenbelasting;552;;MRB kwartaal
-2023-01-01;wegenbelasting;552;;MRB kwartaal
-2023-03-31;wegenbelasting;552;;MRB kwartaal
-2023-06-30;wegenbelasting;552;;MRB kwartaal
-2023-09-30;wegenbelasting;552;;MRB kwartaal
-2024-01-01;wegenbelasting;552;;MRB kwartaal
-2024-03-31;wegenbelasting;552;;MRB kwartaal
-2024-06-30;wegenbelasting;552;;MRB kwartaal
-2024-09-30;wegenbelasting;552;;MRB kwartaal
-2025-01-01;wegenbelasting;552;;MRB kwartaal
-2025-03-31;wegenbelasting;552;;MRB kwartaal
-2025-06-30;wegenbelasting;552;;MRB kwartaal
-2025-09-30;wegenbelasting;552;;MRB kwartaal
-2026-01-01;wegenbelasting;552;;MRB kwartaal
-2015-01-01;brandstof;837;;Diesel 2015 (CBS)
-2016-01-01;brandstof;781;;Diesel 2016 (CBS)
-2017-01-01;brandstof;836;;Diesel 2017 (CBS)
-2018-01-01;brandstof;893;;Diesel 2018 (CBS)
-2019-01-01;brandstof;893;;Diesel 2019 (CBS)
-2020-01-01;brandstof;836;;Diesel 2020 (CBS)
-2021-01-01;brandstof;996;;Diesel 2021 (CBS)
-2022-01-01;brandstof;1217;;Diesel 2022 (CBS)
-2023-01-01;brandstof;1085;;Diesel 2023 (CBS)
-2024-01-01;brandstof;1101;;Diesel 2024 (CBS)
-2025-01-01;brandstof;1084;;Diesel 2025 (CBS)
-2026-01-01;brandstof;1138;;Diesel 2026 (CBS)`;
+2026-04-10;onderhoud;567;231000;Grote onderhoudsbeurt
+2025-02-18;onderhoud;312;;APK keuring + klein onderhoud
+2024-01-22;onderhoud;548;196000;Grote onderhoudsbeurt
+2023-03-14;onderhoud;298;183000;Kleine beurt + oliewissel
+2022-02-07;onderhoud;475;169000;Grote onderhoudsbeurt
+2021-01-25;onderhoud;440;151000;Onderhoudsbeurt
+2020-02-12;onderhoud;395;136000;Grote beurt
+2019-01-08;onderhoud;510;118000;Onderhoudsbeurt + remmen achter
+2018-03-19;onderhoud;340;99000;Kleine beurt
+2017-02-14;onderhoud;485;80000;Grote onderhoudsbeurt
+2016-01-20;onderhoud;320;61000;Onderhoudsbeurt
+2015-02-10;onderhoud;290;48500;Eerste beurt na aankoop
+2023-07-03;reparatie;3650;185000;Distributieriem + waterpomp vervangen
+2024-11-05;reparatie;2280;208000;EGR-klep + inlaatspruitstuk gereinigd
+2022-11-14;reparatie;1420;171000;Turbo revisie
+2021-06-22;reparatie;890;154000;Tweemassavliegwiel vervangen
+2020-09-30;reparatie;245;138000;Ruitenwissermotor voor
+2019-08-15;reparatie;175;121000;Thermostaat vervangen
+2018-05-28;reparatie;620;101000;Stuurhuis lek, revisie
+2025-10-11;reparatie;310;;Raambediening rechtsachter
+2025-04-07;banden;640;221000;4 nieuwe all-season banden
+2022-04-20;banden;195;168000;2 banden voor
+2019-03-25;banden;52;;Seizoenswisseling
+2017-10-18;banden;285;;4x winterbanden
+2025-07-01;verzekering;172;;Pechhulp 2025
+2024-07-01;verzekering;142;;Pechhulp 2024
+2023-07-01;verzekering;128;;Pechhulp 2023
+2022-07-01;verzekering;112;;Pechhulp 2022
+2021-07-01;verzekering;98;;Pechhulp 2021
+2015-12-31;wegenbelasting;486;;MRB kwartaal
+2016-03-31;wegenbelasting;486;;MRB kwartaal
+2016-06-30;wegenbelasting;486;;MRB kwartaal
+2016-09-30;wegenbelasting;486;;MRB kwartaal
+2017-01-01;wegenbelasting;486;;MRB kwartaal
+2017-03-31;wegenbelasting;486;;MRB kwartaal
+2017-06-30;wegenbelasting;486;;MRB kwartaal
+2017-09-30;wegenbelasting;486;;MRB kwartaal
+2018-01-01;wegenbelasting;486;;MRB kwartaal
+2018-03-31;wegenbelasting;486;;MRB kwartaal
+2018-06-30;wegenbelasting;486;;MRB kwartaal
+2018-09-30;wegenbelasting;486;;MRB kwartaal
+2019-01-01;wegenbelasting;486;;MRB kwartaal
+2019-03-31;wegenbelasting;486;;MRB kwartaal
+2019-06-30;wegenbelasting;486;;MRB kwartaal
+2019-09-30;wegenbelasting;486;;MRB kwartaal
+2020-01-01;wegenbelasting;486;;MRB kwartaal
+2020-03-31;wegenbelasting;486;;MRB kwartaal
+2020-06-30;wegenbelasting;486;;MRB kwartaal
+2020-09-30;wegenbelasting;486;;MRB kwartaal
+2021-01-01;wegenbelasting;486;;MRB kwartaal
+2021-03-31;wegenbelasting;486;;MRB kwartaal
+2021-06-30;wegenbelasting;486;;MRB kwartaal
+2021-09-30;wegenbelasting;486;;MRB kwartaal
+2022-01-01;wegenbelasting;486;;MRB kwartaal
+2022-03-31;wegenbelasting;486;;MRB kwartaal
+2022-06-30;wegenbelasting;486;;MRB kwartaal
+2022-09-30;wegenbelasting;486;;MRB kwartaal
+2023-01-01;wegenbelasting;486;;MRB kwartaal
+2023-03-31;wegenbelasting;486;;MRB kwartaal
+2023-06-30;wegenbelasting;486;;MRB kwartaal
+2023-09-30;wegenbelasting;486;;MRB kwartaal
+2024-01-01;wegenbelasting;486;;MRB kwartaal
+2024-03-31;wegenbelasting;486;;MRB kwartaal
+2024-06-30;wegenbelasting;486;;MRB kwartaal
+2024-09-30;wegenbelasting;486;;MRB kwartaal
+2025-01-01;wegenbelasting;486;;MRB kwartaal
+2025-03-31;wegenbelasting;486;;MRB kwartaal
+2025-06-30;wegenbelasting;486;;MRB kwartaal
+2025-09-30;wegenbelasting;486;;MRB kwartaal
+2026-01-01;wegenbelasting;486;;MRB kwartaal
+2015-12-31;verzekering;58;;Verzekering 2016 (automatisch)
+2016-01-31;verzekering;58;;Verzekering 2016 (automatisch)
+2016-02-29;verzekering;58;;Verzekering 2016 (automatisch)
+2016-03-31;verzekering;58;;Verzekering 2016 (automatisch)
+2016-04-30;verzekering;58;;Verzekering 2016 (automatisch)
+2016-05-31;verzekering;58;;Verzekering 2016 (automatisch)
+2016-06-30;verzekering;58;;Verzekering 2016 (automatisch)
+2016-07-31;verzekering;58;;Verzekering 2016 (automatisch)
+2016-08-31;verzekering;58;;Verzekering 2016 (automatisch)
+2016-09-30;verzekering;58;;Verzekering 2016 (automatisch)
+2016-10-31;verzekering;58;;Verzekering 2016 (automatisch)
+2016-11-30;verzekering;58;;Verzekering 2016 (automatisch)
+2016-12-31;verzekering;56;;Verzekering 2017 (automatisch)
+2017-01-31;verzekering;56;;Verzekering 2017 (automatisch)
+2017-02-28;verzekering;56;;Verzekering 2017 (automatisch)
+2017-03-31;verzekering;56;;Verzekering 2017 (automatisch)
+2017-04-30;verzekering;56;;Verzekering 2017 (automatisch)
+2017-05-31;verzekering;56;;Verzekering 2017 (automatisch)
+2017-06-30;verzekering;56;;Verzekering 2017 (automatisch)
+2017-07-31;verzekering;56;;Verzekering 2017 (automatisch)
+2017-08-31;verzekering;56;;Verzekering 2017 (automatisch)
+2017-09-30;verzekering;56;;Verzekering 2017 (automatisch)
+2017-10-31;verzekering;56;;Verzekering 2017 (automatisch)
+2017-11-30;verzekering;56;;Verzekering 2017 (automatisch)
+2017-12-31;verzekering;59;;Verzekering 2018 (automatisch)
+2018-01-31;verzekering;59;;Verzekering 2018 (automatisch)
+2018-02-28;verzekering;59;;Verzekering 2018 (automatisch)
+2018-03-31;verzekering;59;;Verzekering 2018 (automatisch)
+2018-04-30;verzekering;59;;Verzekering 2018 (automatisch)
+2018-05-31;verzekering;59;;Verzekering 2018 (automatisch)
+2018-06-30;verzekering;59;;Verzekering 2018 (automatisch)
+2018-07-31;verzekering;59;;Verzekering 2018 (automatisch)
+2018-08-31;verzekering;59;;Verzekering 2018 (automatisch)
+2018-09-30;verzekering;59;;Verzekering 2018 (automatisch)
+2018-10-31;verzekering;59;;Verzekering 2018 (automatisch)
+2018-11-30;verzekering;59;;Verzekering 2018 (automatisch)
+2018-12-31;verzekering;58;;Verzekering 2019 (automatisch)
+2019-01-31;verzekering;58;;Verzekering 2019 (automatisch)
+2019-02-28;verzekering;58;;Verzekering 2019 (automatisch)
+2019-03-31;verzekering;58;;Verzekering 2019 (automatisch)
+2019-04-30;verzekering;58;;Verzekering 2019 (automatisch)
+2019-05-31;verzekering;58;;Verzekering 2019 (automatisch)
+2019-06-30;verzekering;58;;Verzekering 2019 (automatisch)
+2019-07-31;verzekering;58;;Verzekering 2019 (automatisch)
+2019-08-31;verzekering;58;;Verzekering 2019 (automatisch)
+2019-09-30;verzekering;58;;Verzekering 2019 (automatisch)
+2019-10-31;verzekering;58;;Verzekering 2019 (automatisch)
+2019-11-30;verzekering;58;;Verzekering 2019 (automatisch)
+2019-12-31;verzekering;32;;Verzekering 2020 (automatisch)
+2020-01-31;verzekering;32;;Verzekering 2020 (automatisch)
+2020-02-29;verzekering;32;;Verzekering 2020 (automatisch)
+2020-03-31;verzekering;32;;Verzekering 2020 (automatisch)
+2020-04-30;verzekering;32;;Verzekering 2020 (automatisch)
+2020-05-31;verzekering;32;;Verzekering 2020 (automatisch)
+2020-06-30;verzekering;32;;Verzekering 2020 (automatisch)
+2020-07-31;verzekering;32;;Verzekering 2020 (automatisch)
+2020-08-31;verzekering;32;;Verzekering 2020 (automatisch)
+2020-09-30;verzekering;32;;Verzekering 2020 (automatisch)
+2020-10-31;verzekering;32;;Verzekering 2020 (automatisch)
+2020-11-30;verzekering;32;;Verzekering 2020 (automatisch)
+2020-12-31;verzekering;36;;Verzekering 2021 (automatisch)
+2021-01-31;verzekering;36;;Verzekering 2021 (automatisch)
+2021-02-28;verzekering;36;;Verzekering 2021 (automatisch)
+2021-03-31;verzekering;36;;Verzekering 2021 (automatisch)
+2021-04-30;verzekering;36;;Verzekering 2021 (automatisch)
+2021-05-31;verzekering;36;;Verzekering 2021 (automatisch)
+2021-06-30;verzekering;36;;Verzekering 2021 (automatisch)
+2021-07-31;verzekering;36;;Verzekering 2021 (automatisch)
+2021-08-31;verzekering;36;;Verzekering 2021 (automatisch)
+2021-09-30;verzekering;36;;Verzekering 2021 (automatisch)
+2021-10-31;verzekering;36;;Verzekering 2021 (automatisch)
+2021-11-30;verzekering;36;;Verzekering 2021 (automatisch)
+2021-12-31;verzekering;40;;Verzekering 2022 (automatisch)
+2022-01-31;verzekering;40;;Verzekering 2022 (automatisch)
+2022-02-28;verzekering;40;;Verzekering 2022 (automatisch)
+2022-03-31;verzekering;40;;Verzekering 2022 (automatisch)
+2022-04-30;verzekering;40;;Verzekering 2022 (automatisch)
+2022-05-31;verzekering;40;;Verzekering 2022 (automatisch)
+2022-06-30;verzekering;40;;Verzekering 2022 (automatisch)
+2022-07-31;verzekering;40;;Verzekering 2022 (automatisch)
+2022-08-31;verzekering;40;;Verzekering 2022 (automatisch)
+2022-09-30;verzekering;40;;Verzekering 2022 (automatisch)
+2022-10-31;verzekering;40;;Verzekering 2022 (automatisch)
+2022-11-30;verzekering;40;;Verzekering 2022 (automatisch)
+2022-12-31;verzekering;43;;Verzekering 2023 (automatisch)
+2023-01-31;verzekering;43;;Verzekering 2023 (automatisch)
+2023-02-28;verzekering;43;;Verzekering 2023 (automatisch)
+2023-03-31;verzekering;43;;Verzekering 2023 (automatisch)
+2023-04-30;verzekering;43;;Verzekering 2023 (automatisch)
+2023-05-31;verzekering;43;;Verzekering 2023 (automatisch)
+2023-06-30;verzekering;43;;Verzekering 2023 (automatisch)
+2023-07-31;verzekering;43;;Verzekering 2023 (automatisch)
+2023-08-31;verzekering;43;;Verzekering 2023 (automatisch)
+2023-09-30;verzekering;43;;Verzekering 2023 (automatisch)
+2023-10-31;verzekering;43;;Verzekering 2023 (automatisch)
+2023-11-30;verzekering;43;;Verzekering 2023 (automatisch)
+2023-12-31;verzekering;46;;Verzekering 2024 (automatisch)
+2024-01-31;verzekering;46;;Verzekering 2024 (automatisch)
+2024-02-29;verzekering;46;;Verzekering 2024 (automatisch)
+2024-03-31;verzekering;46;;Verzekering 2024 (automatisch)
+2024-04-30;verzekering;46;;Verzekering 2024 (automatisch)
+2024-05-31;verzekering;46;;Verzekering 2024 (automatisch)
+2024-06-30;verzekering;46;;Verzekering 2024 (automatisch)
+2024-07-31;verzekering;46;;Verzekering 2024 (automatisch)
+2024-08-31;verzekering;46;;Verzekering 2024 (automatisch)
+2024-09-30;verzekering;46;;Verzekering 2024 (automatisch)
+2024-10-31;verzekering;46;;Verzekering 2024 (automatisch)
+2024-11-30;verzekering;46;;Verzekering 2024 (automatisch)
+2024-12-31;verzekering;51;;Verzekering 2025 (automatisch)
+2025-01-31;verzekering;51;;Verzekering 2025 (automatisch)
+2025-02-28;verzekering;51;;Verzekering 2025 (automatisch)
+2025-03-31;verzekering;51;;Verzekering 2025 (automatisch)
+2025-04-30;verzekering;51;;Verzekering 2025 (automatisch)
+2025-05-31;verzekering;51;;Verzekering 2025 (automatisch)
+2025-06-30;verzekering;51;;Verzekering 2025 (automatisch)
+2025-07-31;verzekering;51;;Verzekering 2025 (automatisch)
+2025-08-31;verzekering;51;;Verzekering 2025 (automatisch)
+2025-09-30;verzekering;51;;Verzekering 2025 (automatisch)
+2025-10-31;verzekering;51;;Verzekering 2025 (automatisch)
+2025-11-30;verzekering;51;;Verzekering 2025 (automatisch)
+2025-12-31;verzekering;56;;Verzekering 2026 (automatisch)
+2026-01-31;verzekering;56;;Verzekering 2026 (automatisch)
+2026-02-28;verzekering;56;;Verzekering 2026 (automatisch)
+2015-01-01;brandstof;812;;Diesel 2015 (CBS €1,10 /l)
+2016-01-01;brandstof;756;;Diesel 2016 (CBS €1,03 /l)
+2017-01-01;brandstof;809;;Diesel 2017 (CBS €1,10 /l)
+2018-01-01;brandstof;864;;Diesel 2018 (CBS €1,18 /l)
+2019-01-01;brandstof;864;;Diesel 2019 (CBS €1,18 /l)
+2020-01-01;brandstof;809;;Diesel 2020 (CBS €1,10 /l)
+2021-01-01;brandstof;963;;Diesel 2021 (CBS €1,31 /l)
+2022-01-01;brandstof;1177;;Diesel 2022 (CBS €1,60 /l)
+2023-01-01;brandstof;1050;;Diesel 2023 (CBS €1,43 /l)
+2024-01-01;brandstof;1065;;Diesel 2024 (CBS €1,45 /l)
+2025-01-01;brandstof;1050;;Diesel 2025 (CBS €1,43 /l)
+2026-01-01;brandstof;1101;;Diesel 2026 (CBS €1,50 /l)`;
 
 const VOORBEELD_STATE = {
-  label: "Voorbeeld auto", merk: "Peugeot", model: "508", bouwjaar: "2013",
-  brandstof: "Diesel", kenteken: "VOORBEELD", gewichtKg: 1560, provincie: "gelderland",
-  aankoopprijs: 18500, aankoopdatum: "2015-06-01",
-  verwachteVerkoopdatum: "2027-01-01", verwachtVerkoopprijs: 2500,
-  jaarlijkseKm: 18000, kmStandAankoop: 62000, huidigeKmStand: 237000,
-  cataloguswaarde: 35000, leaseLooptijd: 60, leaseKm: 18000, leaseAanbetaling: 0,
+  label: "Demo auto", merk: "Volkswagen", model: "Passat 2.0 TDI", bouwjaar: "2014",
+  brandstof: "Diesel", kenteken: "DEMO", gewichtKg: 1620, provincie: "noord-holland",
+  aankoopprijs: 17500, aankoopdatum: "2014-09-01",
+  verwachteVerkoopdatum: "2027-06-01", verwachtVerkoopprijs: 3500,
+  jaarlijkseKm: 18000, kmStandAankoop: 48000, huidigeKmStand: 231000,
+  cataloguswaarde: 32000, leaseLooptijd: 48, leaseKm: 15000, leaseAanbetaling: 0,
   leaseStijgingPct: 10, bijtellingPct: 22, belastingschijf: 37,
-  gemiddeldVerbruik: 18, brandstofPrijs: 1.50, brandstofAutomatisch: false,
+  gemiddeldVerbruik: 17.5, brandstofPrijs: 1.50, brandstofAutomatisch: false,
   brandstofPrijzenPerJaar: {}, brandstofJaarBedrag: null,
   mobiliteitBrutoMaand: 0, kmVergTarief: 0, kmVergKmMaand: 0, kmVergMaandTotaal: 0,
   mrbWerkelijkMaand: "", mrbAutomatisch: false,
   verzekeringAutomatisch: false, verzekeringType: "WA", verzekeringJaren: [],
-  pechhulpJaren: [], cbsLaden: false, brandstofPrijzenPerJaar: {},
-  leaseBedragHandmatig: null, leasePriveBedragHandmatig: null,
+  pechhulpJaren: [], cbsLaden: false,
+  leaseBedragHandmatig: 860, leasePriveBedragHandmatig: 790,
   kmPerTank: null, tankLiter: null,
 };
 
