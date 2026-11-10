@@ -7,7 +7,7 @@ import {
   Tooltip, Legend, ResponsiveContainer, ReferenceLine, PieChart, Pie, Cell
 } from "recharts";
 
-const APP_VERSION = "v2 fix61";
+const APP_VERSION = "v2 fix62";
 
 const VOORBEELD_CSV = `datum;categorie;bedrag;km;omschrijving
 2026-04-10;onderhoud;567;231000;Grote onderhoudsbeurt
@@ -872,15 +872,17 @@ export default function App() {
   const bevestigNieuweAuto = () => {
     const id = nieuweAutoId();
     const rdw = nieuweAutoRdwInfo || {};
+    const heeftMrb = !!(nieuweAutoForm.provincie && rdw.gewichtKg);
     const nieuweAuto = {
       id,
-      label: nieuweAutoForm.naam || rdw.merk && rdw.model ? `${rdw.merk} ${rdw.model}` : "Mijn auto",
+      label: nieuweAutoForm.naam || (rdw.merk && rdw.model ? `${rdw.merk} ${rdw.model}` : "Mijn auto"),
       ...defaultState(),
       kenteken: nieuweAutoForm.kenteken.replace(/-/g,"").toUpperCase(),
       provincie: nieuweAutoForm.provincie || "",
       merk: rdw.merk || "", model: rdw.model || "",
       bouwjaar: rdw.bouwjaar || "", brandstof: rdw.brandstof || "",
       gewichtKg: rdw.gewichtKg || "", cataloguswaarde: rdw.cataloguswaarde || "",
+      mrbAutomatisch: heeftMrb,
     };
     setStorage(s => ({ autos: [...s.autos, nieuweAuto], actiefId: id }));
     setShowNieuweAutoPopup(false);
