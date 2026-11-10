@@ -7,7 +7,7 @@ import {
   Tooltip, Legend, ResponsiveContainer, ReferenceLine, PieChart, Pie, Cell
 } from "recharts";
 
-const APP_VERSION = "v2 fix59";
+const APP_VERSION = "v2 fix60";
 
 const VOORBEELD_CSV = `datum;categorie;bedrag;km;omschrijving
 2026-04-10;onderhoud;567;231000;Grote onderhoudsbeurt
@@ -781,6 +781,7 @@ export default function App() {
   const [importError, setImportError] = useState("");
   const [saveFlash, setSaveFlash]   = useState(false);
   const [showWelcome, setShowWelcome] = useState(() => !localStorage.getItem("autokosten_welcomed"));
+  const [welkomNaam, setWelkomNaam]   = useState("");
   const [showDonatie, setShowDonatie] = useState(() => {
     if (localStorage.getItem("autokosten_donatie_gedaan")) return false;
     if (!localStorage.getItem("autokosten_welcomed")) return false; // welkomst heeft voorrang
@@ -3272,19 +3273,41 @@ export default function App() {
                 }}>
                 🚗 Demo bekijken
               </button>
-              <button
-                onClick={() => {
-                  localStorage.setItem("autokosten_welcomed", "1");
-                  setShowWelcome(false);
-                  setTab("beheer");
-                }}
-                style={{
-                  width: "100%", padding: "12px", fontSize: 15, fontWeight: 600,
-                  background: "#1B4F72", color: "#fff", border: "none",
-                  borderRadius: 10, cursor: "pointer",
-                }}>
-                ➕ Eigen auto aanmaken
-              </button>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  type="text"
+                  placeholder="Naam van je auto (bijv. Peugeot 508)"
+                  value={welkomNaam}
+                  onChange={e => setWelkomNaam(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter" && welkomNaam.trim()) {
+                      setState(s => ({ ...s, label: welkomNaam.trim() }));
+                      localStorage.setItem("autokosten_welcomed", "1");
+                      setShowWelcome(false);
+                      setTab("auto");
+                    }
+                  }}
+                  style={{
+                    flex: 1, padding: "11px 14px", fontSize: 14, border: "1.5px solid #1B4F7260",
+                    borderRadius: 10, outline: "none",
+                  }}
+                  autoFocus={false}
+                />
+                <button
+                  onClick={() => {
+                    setState(s => ({ ...s, label: welkomNaam.trim() || "Mijn auto" }));
+                    localStorage.setItem("autokosten_welcomed", "1");
+                    setShowWelcome(false);
+                    setTab("auto");
+                  }}
+                  style={{
+                    padding: "11px 16px", fontSize: 15, fontWeight: 600,
+                    background: "#1B4F72", color: "#fff", border: "none",
+                    borderRadius: 10, cursor: "pointer", whiteSpace: "nowrap",
+                  }}>
+                  ➕ Start
+                </button>
+              </div>
             </div>
 
             {/* DigiDave branding */}
