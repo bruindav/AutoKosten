@@ -7,7 +7,7 @@ import {
   Tooltip, Legend, ResponsiveContainer, ReferenceLine, PieChart, Pie, Cell
 } from "recharts";
 
-const APP_VERSION = "v2 fix62";
+const APP_VERSION = "v2 fix63";
 
 const VOORBEELD_CSV = `datum;categorie;bedrag;km;omschrijving
 2026-04-10;onderhoud;567;231000;Grote onderhoudsbeurt
@@ -783,7 +783,7 @@ export default function App() {
   const [showWelcome, setShowWelcome] = useState(() => !localStorage.getItem("autokosten_welcomed"));
   const [welkomNaam, setWelkomNaam]   = useState("");
   const [showNieuweAutoPopup, setShowNieuweAutoPopup] = useState(false);
-  const [nieuweAutoForm, setNieuweAutoForm] = useState({ naam: "", kenteken: "", provincie: "" });
+  const [nieuweAutoForm, setNieuweAutoForm] = useState({ naam: "", kenteken: "", provincie: "", brandstof: "" });
   const [nieuweAutoRdwLoading, setNieuweAutoRdwLoading] = useState(false);
   const [nieuweAutoRdwInfo, setNieuweAutoRdwInfo] = useState(null);
   const [nieuweAutoRdwError, setNieuweAutoRdwError] = useState("");
@@ -862,9 +862,17 @@ export default function App() {
         gewichtKg: d.massa_rijklaar || "",
         cataloguswaarde: d.catalogusprijs ? parseInt(d.catalogusprijs) : "",
       });
-      if (!nieuweAutoForm.naam) {
-        setNieuweAutoForm(f => ({ ...f, naam: `${d.merk || ""} ${d.handelsbenaming || ""}`.trim() }));
-      }
+      const rdwBrandstof = d.brandstof_omschrijving || "";
+      const genormBrandstof = rdwBrandstof.toLowerCase().includes("diesel") ? "Diesel"
+        : rdwBrandstof.toLowerCase().includes("elektr") ? "Elektrisch"
+        : rdwBrandstof.toLowerCase().includes("lpg") ? "LPG"
+        : rdwBrandstof.toLowerCase().includes("hybr") ? "Hybride (benzine)"
+        : rdwBrandstof ? "Benzine" : "";
+      setNieuweAutoForm(f => ({
+        ...f,
+        naam: f.naam || `${d.merk || ""} ${d.handelsbenaming || ""}`.trim(),
+        brandstof: f.brandstof || genormBrandstof,
+      }));
     } catch(e) { setNieuweAutoRdwError(e.message); }
     finally { setNieuweAutoRdwLoading(false); }
   };
@@ -880,13 +888,14 @@ export default function App() {
       kenteken: nieuweAutoForm.kenteken.replace(/-/g,"").toUpperCase(),
       provincie: nieuweAutoForm.provincie || "",
       merk: rdw.merk || "", model: rdw.model || "",
-      bouwjaar: rdw.bouwjaar || "", brandstof: rdw.brandstof || "",
+      bouwjaar: rdw.bouwjaar || "",
+      brandstof: nieuweAutoForm.brandstof || rdw.brandstof || "",
       gewichtKg: rdw.gewichtKg || "", cataloguswaarde: rdw.cataloguswaarde || "",
       mrbAutomatisch: heeftMrb,
     };
     setStorage(s => ({ autos: [...s.autos, nieuweAuto], actiefId: id }));
     setShowNieuweAutoPopup(false);
-    setNieuweAutoForm({ naam: "", kenteken: "", provincie: "" });
+    setNieuweAutoForm({ naam: "", kenteken: "", provincie: "", brandstof: "" });
     setNieuweAutoRdwInfo(null); setNieuweAutoRdwError("");
     localStorage.setItem("autokosten_welcomed", "1");
     setShowWelcome(false);
@@ -1932,7 +1941,7 @@ export default function App() {
           <Card>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
               <SectionTitle style={{ margin: 0 }}>Auto's</SectionTitle>
-              <button onClick={() => { setNieuweAutoForm({ naam: "", kenteken: "", provincie: "" }); setNieuweAutoRdwInfo(null); setNieuweAutoRdwError(""); setShowNieuweAutoPopup(true); }}
+              <button onClick={() => { setNieuweAutoForm({ naam: "", kenteken: "", provincie: "", brandstof: "" }); setNieuweAutoRdwInfo(null); setNieuweAutoRdwError(""); setShowNieuweAutoPopup(true); }}
                 style={{ background: COLORS.primary, color: "#fff", border: "none", borderRadius: 6, padding: "7px 14px", cursor: "pointer", fontWeight: 600, fontSize: 14 }}>
                 ＋ Toevoegen
               </button>
@@ -3251,6 +3260,18 @@ export default function App() {
                 ✓ {nieuweAutoRdwInfo.merk} {nieuweAutoRdwInfo.model} · {nieuweAutoRdwInfo.bouwjaar} · {nieuweAutoRdwInfo.brandstof}
               </div>
             )}
+
+            {/* Brandstof */}
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 13, color: "#666", display: "block", marginBottom: 4 }}>Brandstof</label>
+              <select value={nieuweAutoForm.brandstof} onChange={e => setNieuweAutoForm(f => ({ ...f, brandstof: e.target.value }))}
+                style={{ width: "100%", padding: "10px 12px", fontSize: 14, border: "1px solid #d0cdc8", borderRadius: 8, background: "#fff", outline: "none" }}>
+                <option value="">— kies brandstof —</option>
+                {["Benzine","Diesel","Elektrisch","LPG","Hybride (benzine)","Hybride (diesel)","Waterstof"].map(b => (
+                  <option key={b} value={b}>{b}</option>
+                ))}
+              </select>
+            </div>
 
             {/* Provincie */}
             <div style={{ marginBottom: "1.5rem" }}>
