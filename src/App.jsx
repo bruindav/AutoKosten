@@ -7,7 +7,7 @@ import {
   Tooltip, Legend, ResponsiveContainer, ReferenceLine, PieChart, Pie, Cell
 } from "recharts";
 
-const APP_VERSION = "v2 fix58";
+const APP_VERSION = "v2 fix59";
 
 const VOORBEELD_CSV = `datum;categorie;bedrag;km;omschrijving
 2026-04-10;onderhoud;567;231000;Grote onderhoudsbeurt
@@ -3276,6 +3276,7 @@ export default function App() {
                 onClick={() => {
                   localStorage.setItem("autokosten_welcomed", "1");
                   setShowWelcome(false);
+                  setTab("beheer");
                 }}
                 style={{
                   width: "100%", padding: "12px", fontSize: 15, fontWeight: 600,
