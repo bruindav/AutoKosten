@@ -7,7 +7,7 @@ import {
   Tooltip, Legend, ResponsiveContainer, ReferenceLine, PieChart, Pie, Cell
 } from "recharts";
 
-const APP_VERSION = "v2 fix55";
+const APP_VERSION = "v2 fix56";
 
 const VOORBEELD_CSV = `datum;categorie;bedrag;km;omschrijving
 2026-04-10;onderhoud;567;231000;Grote onderhoudsbeurt
@@ -2022,15 +2022,14 @@ export default function App() {
           <Card>
             <SectionTitle>Voorbeeldberekening laden</SectionTitle>
             <div style={{ fontSize: 13, color: "#666", marginBottom: 12, lineHeight: 1.7 }}>
-              Laad een complete voorbeeldberekening om te zien wat de app voor jou kan betekenen.
-              Het voorbeeld is gebaseerd op een Peugeot 508 Diesel uit 2013, met 11 jaar werkelijke
-              onderhouds-, reparatie- en verzekeringsdata, CBS-dieselprijzen en MRB-posten.
+              Laad een complete voorbeeldberekening om te zien wat de app voor jou kan betekenen —
+              met fictieve data over meerdere jaren: onderhoud, reparaties, brandstof, verzekering en MRB.
             </div>
             <div style={{ padding: "10px 14px", background: "#f7f6f2", borderRadius: 8, fontSize: 13, marginBottom: 14, display: "flex", gap: 20, flexWrap: "wrap" }}>
-              <span>🚗 Peugeot 508 Diesel 2013</span>
-              <span>📅 2015–2027</span>
+              <span>🚗 Demo-auto (fictief)</span>
+              <span>📅 2014–2027</span>
               <span>🛣 18.000 km/jr</span>
-              <span>💰 aanschaf €18.500</span>
+              <span>💰 aanschaf €17.500</span>
             </div>
             <button
               onClick={() => {
@@ -3232,15 +3231,6 @@ export default function App() {
               Alle gegevens worden lokaal opgeslagen in je browser. Er gaat niets naar een server.
             </p>
 
-            {/* Demo tip */}
-            <div style={{
-              background: "#f0f4ff", border: "0.5px solid #1B4F7230",
-              borderRadius: 10, padding: "12px 16px", marginBottom: "1.25rem",
-              fontSize: 14, color: "#1B4F72", lineHeight: 1.6,
-            }}>
-              💡 <strong>Nieuw?</strong> Ga naar <strong>⚙ Beheer</strong> en klik op <em>Voorbeeldauto toevoegen</em> om een complete berekening te bekijken.
-            </div>
-
             {/* Links */}
             <div style={{ display: "flex", gap: 16, fontSize: 13, marginBottom: "1.5rem", flexWrap: "wrap" }}>
               {[
@@ -3255,19 +3245,43 @@ export default function App() {
               ))}
             </div>
 
-            {/* Knop */}
-            <button
-              onClick={() => {
-                localStorage.setItem("autokosten_welcomed", "1");
-                setShowWelcome(false);
-              }}
-              style={{
-                width: "100%", padding: "12px", fontSize: 15, fontWeight: 600,
-                background: "#1B4F72", color: "#fff", border: "none",
-                borderRadius: 10, cursor: "pointer",
-              }}>
-              Aan de slag →
-            </button>
+            {/* Keuze knoppen */}
+            <div style={{ display: "flex", gap: 10, flexDirection: "column" }}>
+              <button
+                onClick={() => {
+                  const id = nieuweAutoId();
+                  const regels = VOORBEELD_CSV.trim().split("\n").filter(l => l.trim() && !l.startsWith("datum"));
+                  let kid = Date.now();
+                  const kosten = regels.map(r => {
+                    const [datum, cat, bedrag, km, omschr] = r.split(";");
+                    const cm = COST_CATEGORIES.find(c => c.id === cat?.trim().toLowerCase());
+                    return { id: kid++, datum: datum?.trim(), categorie: cm?.id||"overig", bedrag: Number(bedrag), km: km?Number(km):null, omschrijving: omschr?.trim()||"", automatisch: false };
+                  });
+                  const nieuweAuto = { id, ...defaultState(), ...VOORBEELD_STATE, kosten };
+                  setStorage(s => ({ autos: [...s.autos, nieuweAuto], actiefId: id }));
+                  localStorage.setItem("autokosten_welcomed", "1");
+                  setShowWelcome(false);
+                }}
+                style={{
+                  width: "100%", padding: "12px", fontSize: 15, fontWeight: 600,
+                  background: "#2980B9", color: "#fff", border: "none",
+                  borderRadius: 10, cursor: "pointer",
+                }}>
+                🚗 Demo bekijken
+              </button>
+              <button
+                onClick={() => {
+                  localStorage.setItem("autokosten_welcomed", "1");
+                  setShowWelcome(false);
+                }}
+                style={{
+                  width: "100%", padding: "12px", fontSize: 15, fontWeight: 600,
+                  background: "#1B4F72", color: "#fff", border: "none",
+                  borderRadius: 10, cursor: "pointer",
+                }}>
+                ➕ Eigen auto aanmaken
+              </button>
+            </div>
 
             {/* DigiDave branding */}
             <div style={{ marginTop: 20, paddingTop: 16, borderTop: "0.5px solid #f0ede8", display: "flex", justifyContent: "center" }}>
