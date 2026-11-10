@@ -7,7 +7,7 @@ import {
   Tooltip, Legend, ResponsiveContainer, ReferenceLine, PieChart, Pie, Cell
 } from "recharts";
 
-const APP_VERSION = "v2 fix60";
+const APP_VERSION = "v2 fix61";
 
 const VOORBEELD_CSV = `datum;categorie;bedrag;km;omschrijving
 2026-04-10;onderhoud;567;231000;Grote onderhoudsbeurt
@@ -782,6 +782,11 @@ export default function App() {
   const [saveFlash, setSaveFlash]   = useState(false);
   const [showWelcome, setShowWelcome] = useState(() => !localStorage.getItem("autokosten_welcomed"));
   const [welkomNaam, setWelkomNaam]   = useState("");
+  const [showNieuweAutoPopup, setShowNieuweAutoPopup] = useState(false);
+  const [nieuweAutoForm, setNieuweAutoForm] = useState({ naam: "", kenteken: "", provincie: "" });
+  const [nieuweAutoRdwLoading, setNieuweAutoRdwLoading] = useState(false);
+  const [nieuweAutoRdwInfo, setNieuweAutoRdwInfo] = useState(null);
+  const [nieuweAutoRdwError, setNieuweAutoRdwError] = useState("");
   const [showDonatie, setShowDonatie] = useState(() => {
     if (localStorage.getItem("autokosten_donatie_gedaan")) return false;
     if (!localStorage.getItem("autokosten_welcomed")) return false; // welkomst heeft voorrang
@@ -838,6 +843,52 @@ export default function App() {
       }));
     } catch (e) { setRdwError(e.message); }
     finally { setRdwLoading(false); }
+  };
+
+  // RDW lookup voor nieuwe-auto popup
+  const handleNieuweAutoRdw = async (kenteken) => {
+    if (!kenteken || kenteken.replace(/-/g,"").length < 4) return;
+    setNieuweAutoRdwLoading(true); setNieuweAutoRdwError(""); setNieuweAutoRdwInfo(null);
+    try {
+      const k = kenteken.replace(/-/g,"").toUpperCase();
+      const res = await fetch(`https://opendata.rdw.nl/resource/m9d7-ebf2.json?kenteken=${k}`);
+      const data = await res.json();
+      if (!data.length) throw new Error("Kenteken niet gevonden");
+      const d = data[0];
+      setNieuweAutoRdwInfo({
+        merk: d.merk || "", model: d.handelsbenaming || "",
+        bouwjaar: d.datum_eerste_toelating?.slice(0,4) || "",
+        brandstof: d.brandstof_omschrijving || "",
+        gewichtKg: d.massa_rijklaar || "",
+        cataloguswaarde: d.catalogusprijs ? parseInt(d.catalogusprijs) : "",
+      });
+      if (!nieuweAutoForm.naam) {
+        setNieuweAutoForm(f => ({ ...f, naam: `${d.merk || ""} ${d.handelsbenaming || ""}`.trim() }));
+      }
+    } catch(e) { setNieuweAutoRdwError(e.message); }
+    finally { setNieuweAutoRdwLoading(false); }
+  };
+
+  const bevestigNieuweAuto = () => {
+    const id = nieuweAutoId();
+    const rdw = nieuweAutoRdwInfo || {};
+    const nieuweAuto = {
+      id,
+      label: nieuweAutoForm.naam || rdw.merk && rdw.model ? `${rdw.merk} ${rdw.model}` : "Mijn auto",
+      ...defaultState(),
+      kenteken: nieuweAutoForm.kenteken.replace(/-/g,"").toUpperCase(),
+      provincie: nieuweAutoForm.provincie || "",
+      merk: rdw.merk || "", model: rdw.model || "",
+      bouwjaar: rdw.bouwjaar || "", brandstof: rdw.brandstof || "",
+      gewichtKg: rdw.gewichtKg || "", cataloguswaarde: rdw.cataloguswaarde || "",
+    };
+    setStorage(s => ({ autos: [...s.autos, nieuweAuto], actiefId: id }));
+    setShowNieuweAutoPopup(false);
+    setNieuweAutoForm({ naam: "", kenteken: "", provincie: "" });
+    setNieuweAutoRdwInfo(null); setNieuweAutoRdwError("");
+    localStorage.setItem("autokosten_welcomed", "1");
+    setShowWelcome(false);
+    setTab("auto");
   };
 
   // Berekeningen
@@ -1877,60 +1928,29 @@ export default function App() {
       {tab === "beheer" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
           <Card>
-            <SectionTitle>Auto's beheren</SectionTitle>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+              <SectionTitle style={{ margin: 0 }}>Auto's</SectionTitle>
+              <button onClick={() => { setNieuweAutoForm({ naam: "", kenteken: "", provincie: "" }); setNieuweAutoRdwInfo(null); setNieuweAutoRdwError(""); setShowNieuweAutoPopup(true); }}
+                style={{ background: COLORS.primary, color: "#fff", border: "none", borderRadius: 6, padding: "7px 14px", cursor: "pointer", fontWeight: 600, fontSize: 14 }}>
+                ＋ Toevoegen
+              </button>
+            </div>
             {alleAutos.map(a => (
               <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 0", borderBottom: "0.5px solid #f0ede8" }}>
-                {editLabelId === a.id ? (
-                  <>
-                    <input value={editLabelVal} onChange={e => setEditLabelVal(e.target.value)}
-                      onKeyDown={e => { if (e.key === "Enter") { setAutoLabel(a.id, editLabelVal); setEditLabelId(null); }}}
-                      style={{ flex: 1, fontSize: 13 }} autoFocus />
-                    <button onClick={() => { setAutoLabel(a.id, editLabelVal); setEditLabelId(null); }}
-                      style={{ background: COLORS.success, color: "#fff", border: "none", borderRadius: 4, padding: "6px 12px", cursor: "pointer", fontSize: 13 }}>✓ Opslaan</button>
-                    <button onClick={() => setEditLabelId(null)}
-                      style={{ background: "none", border: "0.5px solid #ccc", borderRadius: 4, padding: "6px 10px", cursor: "pointer", fontSize: 13 }}>✕</button>
-                  </>
-                ) : (
-                  <>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 14, fontWeight: a.id === actiefId ? 600 : 400 }}>
-                        {a.id === actiefId && <span style={{ color: COLORS.primary, marginRight: 6 }}>▶</span>}
-                        {a.label || "Auto"}
-                      </div>
-                      {a.merk && a.model && <div style={{ fontSize: 12, color: "#bbb" }}>{a.merk} {a.model} {a.bouwjaar ? `· ${a.bouwjaar}` : ""} {a.kenteken ? `· ${a.kenteken}` : ""}</div>}
-                    </div>
-                    <button onClick={() => setStorage(s => ({ ...s, actiefId: a.id }))}
-                      disabled={a.id === actiefId}
-                      style={{ background: a.id === actiefId ? "#f0f4ff" : "none", border: `0.5px solid ${a.id === actiefId ? COLORS.primary : "#e0ddd8"}`, color: a.id === actiefId ? COLORS.primary : "#666", borderRadius: 4, padding: "5px 10px", cursor: a.id === actiefId ? "default" : "pointer", fontSize: 12 }}>
-                      {a.id === actiefId ? "Actief" : "Selecteer"}
-                    </button>
-                    <button onClick={() => { setEditLabelId(a.id); setEditLabelVal(a.label || ""); }}
-                      style={{ background: "none", border: "0.5px solid #e0ddd8", borderRadius: 4, padding: "5px 10px", cursor: "pointer", fontSize: 12, color: "#666" }}>✏ Naam</button>
-                    {alleAutos.length > 1 && (
-                      <button onClick={() => { if (window.confirm(`"${a.label}" verwijderen? Alle kosten van deze auto gaan verloren.`)) verwijderAuto(a.id); }}
-                        style={{ background: "none", border: `0.5px solid ${COLORS.danger}`, color: COLORS.danger, borderRadius: 4, padding: "5px 10px", cursor: "pointer", fontSize: 12 }}>Verwijder</button>
-                    )}
-                  </>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 14, fontWeight: a.id === actiefId ? 600 : 400 }}>
+                    {a.id === actiefId && <span style={{ color: COLORS.primary, marginRight: 6 }}>▶</span>}
+                    {a.label || "Auto"}
+                  </div>
+                  {(a.merk || a.model) && <div style={{ fontSize: 12, color: "#bbb" }}>{a.merk} {a.model} {a.bouwjaar ? `· ${a.bouwjaar}` : ""} {a.kenteken ? `· ${a.kenteken}` : ""}</div>}
+                </div>
+                {alleAutos.length > 1 && (
+                  <button onClick={() => { if (window.confirm(`"${a.label || "Auto"}" verwijderen? Alle kosten van deze auto gaan verloren.`)) verwijderAuto(a.id); }}
+                    style={{ background: "none", border: `0.5px solid ${COLORS.danger}`, color: COLORS.danger, borderRadius: 4, padding: "5px 10px", cursor: "pointer", fontSize: 12 }}>Verwijder</button>
                 )}
               </div>
             ))}
-
-            <div style={{ marginTop: "1.25rem" }}>
-              <SectionTitle>Nieuwe auto toevoegen</SectionTitle>
-              <div style={{ display: "flex", gap: 8 }}>
-                <input value={nieuwAutoLabel} onChange={e => setNieuwAutoLabel(e.target.value)}
-                  placeholder="Naam (bijv. Auto partner, Moeder)"
-                  onKeyDown={e => { if (e.key === "Enter" && nieuwAutoLabel.trim()) { voegAutoToe(nieuwAutoLabel.trim()); setNieuwAutoLabel(""); }}}
-                  style={{ flex: 1, fontSize: 13 }} />
-                <button onClick={() => { if (nieuwAutoLabel.trim()) { voegAutoToe(nieuwAutoLabel.trim()); setNieuwAutoLabel(""); }}}
-                  style={{ background: COLORS.primary, color: "#fff", border: "none", borderRadius: 6, padding: "9px 16px", cursor: "pointer", fontWeight: 500 }}>
-                  + Toevoegen
-                </button>
-              </div>
-              <div style={{ marginTop: 8, fontSize: 12, color: "#bbb" }}>
-                Na toevoegen klik je op "Selecteer" om naar die auto te schakelen, of gebruik de pills bovenaan de pagina.
-              </div>
-            </div>
+            <div style={{ marginTop: 10, fontSize: 12, color: "#bbb" }}>Wissel van auto via de chips bovenaan. Naam wijzigen via het tabblad Auto.</div>
           </Card>
 
           <Card>
@@ -3192,6 +3212,71 @@ export default function App() {
         </div>
       )}
 
+      {/* ══ NIEUWE AUTO POPUP ══ */}
+      {showNieuweAutoPopup && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 1100, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem" }}>
+          <div style={{ background: "#fff", borderRadius: 16, padding: "1.75rem", maxWidth: 420, width: "100%", boxShadow: "0 8px 40px rgba(0,0,0,0.18)" }}>
+            <div style={{ fontSize: 18, fontWeight: 700, color: "#1B4F72", marginBottom: "1.25rem" }}>🚗 Auto toevoegen</div>
+
+            {/* Naam */}
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 13, color: "#666", display: "block", marginBottom: 4 }}>Naam</label>
+              <input type="text" placeholder="bijv. Peugeot 508 of Mijn auto"
+                value={nieuweAutoForm.naam}
+                onChange={e => setNieuweAutoForm(f => ({ ...f, naam: e.target.value }))}
+                style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", fontSize: 14, border: "1px solid #d0cdc8", borderRadius: 8, outline: "none" }} />
+            </div>
+
+            {/* Kenteken */}
+            <div style={{ marginBottom: 4 }}>
+              <label style={{ fontSize: 13, color: "#666", display: "block", marginBottom: 4 }}>Kenteken <span style={{ color: "#aaa" }}>(optioneel)</span></label>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input type="text" placeholder="bijv. AB-123-C"
+                  value={nieuweAutoForm.kenteken}
+                  onChange={e => setNieuweAutoForm(f => ({ ...f, kenteken: e.target.value }))}
+                  onBlur={e => handleNieuweAutoRdw(e.target.value)}
+                  style={{ flex: 1, padding: "10px 12px", fontSize: 14, border: "1px solid #d0cdc8", borderRadius: 8, outline: "none" }} />
+                <button onClick={() => handleNieuweAutoRdw(nieuweAutoForm.kenteken)}
+                  disabled={nieuweAutoRdwLoading}
+                  style={{ padding: "10px 14px", background: "#2980B9", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 500 }}>
+                  {nieuweAutoRdwLoading ? "…" : "Opzoeken"}
+                </button>
+              </div>
+            </div>
+            {nieuweAutoRdwError && <div style={{ fontSize: 12, color: "#c0392b", marginBottom: 8 }}>⚠ {nieuweAutoRdwError}</div>}
+            {nieuweAutoRdwInfo && (
+              <div style={{ fontSize: 12, color: "#2980B9", background: "#f0f8ff", borderRadius: 6, padding: "8px 10px", marginBottom: 8 }}>
+                ✓ {nieuweAutoRdwInfo.merk} {nieuweAutoRdwInfo.model} · {nieuweAutoRdwInfo.bouwjaar} · {nieuweAutoRdwInfo.brandstof}
+              </div>
+            )}
+
+            {/* Provincie */}
+            <div style={{ marginBottom: "1.5rem" }}>
+              <label style={{ fontSize: 13, color: "#666", display: "block", marginBottom: 4 }}>Provincie <span style={{ color: "#aaa" }}>(voor MRB-berekening)</span></label>
+              <select value={nieuweAutoForm.provincie} onChange={e => setNieuweAutoForm(f => ({ ...f, provincie: e.target.value }))}
+                style={{ width: "100%", padding: "10px 12px", fontSize: 14, border: "1px solid #d0cdc8", borderRadius: 8, background: "#fff", outline: "none" }}>
+                <option value="">— kies provincie —</option>
+                {["groningen","friesland","drenthe","overijssel","flevoland","gelderland","utrecht","noord-holland","zuid-holland","zeeland","noord-brabant","limburg"].map(p => (
+                  <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Knoppen */}
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => setShowNieuweAutoPopup(false)}
+                style={{ flex: 1, padding: "11px", fontSize: 14, background: "none", border: "1px solid #d0cdc8", borderRadius: 10, cursor: "pointer", color: "#666" }}>
+                Annuleren
+              </button>
+              <button onClick={bevestigNieuweAuto}
+                style={{ flex: 2, padding: "11px", fontSize: 15, fontWeight: 600, background: "#1B4F72", color: "#fff", border: "none", borderRadius: 10, cursor: "pointer" }}>
+                ✓ Toevoegen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ══ WELKOMST MODAL ══ */}
       {showWelcome && (
         <div style={{
@@ -3273,41 +3358,15 @@ export default function App() {
                 }}>
                 🚗 Demo bekijken
               </button>
-              <div style={{ display: "flex", gap: 8 }}>
-                <input
-                  type="text"
-                  placeholder="Naam van je auto (bijv. Peugeot 508)"
-                  value={welkomNaam}
-                  onChange={e => setWelkomNaam(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === "Enter" && welkomNaam.trim()) {
-                      setState(s => ({ ...s, label: welkomNaam.trim() }));
-                      localStorage.setItem("autokosten_welcomed", "1");
-                      setShowWelcome(false);
-                      setTab("auto");
-                    }
-                  }}
-                  style={{
-                    flex: 1, padding: "11px 14px", fontSize: 14, border: "1.5px solid #1B4F7260",
-                    borderRadius: 10, outline: "none",
-                  }}
-                  autoFocus={false}
-                />
-                <button
-                  onClick={() => {
-                    setState(s => ({ ...s, label: welkomNaam.trim() || "Mijn auto" }));
-                    localStorage.setItem("autokosten_welcomed", "1");
-                    setShowWelcome(false);
-                    setTab("auto");
-                  }}
-                  style={{
-                    padding: "11px 16px", fontSize: 15, fontWeight: 600,
-                    background: "#1B4F72", color: "#fff", border: "none",
-                    borderRadius: 10, cursor: "pointer", whiteSpace: "nowrap",
-                  }}>
-                  ➕ Start
-                </button>
-              </div>
+              <button
+                onClick={() => setShowNieuweAutoPopup(true)}
+                style={{
+                  width: "100%", padding: "12px", fontSize: 15, fontWeight: 600,
+                  background: "#1B4F72", color: "#fff", border: "none",
+                  borderRadius: 10, cursor: "pointer",
+                }}>
+                ➕ Eigen auto aanmaken
+              </button>
             </div>
 
             {/* DigiDave branding */}
