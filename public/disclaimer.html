@@ -7,16 +7,37 @@
   <link rel="icon" type="image/svg+xml" href="/AutoKosten/favicon.svg">
   <style>
     body { font-family: system-ui, sans-serif; max-width: 700px; margin: 0 auto; padding: 2rem 1rem; color: #1a1a1a; line-height: 1.7; }
-    h1 { color: #1B4F72; } h2 { color: #2980B9; margin-top: 2rem; }
+    h1 { color: #1B4F72; } h2 { color: #2980B9; margin-top: 2rem; border-bottom: 1px solid #e0ddd8; padding-bottom: 4px; }
     a { color: #1B4F72; }
     .back { display: inline-block; margin-bottom: 1.5rem; color: #1B4F72; text-decoration: none; font-size: 14px; }
     .warn { background: #fff3cd; border-left: 4px solid #F0B429; padding: 12px 16px; border-radius: 4px; margin: 1rem 0; }
+    .ai  { background: #f0f4ff; border-left: 4px solid #1B4F72; padding: 12px 16px; border-radius: 4px; margin: 1rem 0; font-size: 14px; }
   </style>
 </head>
 <body>
   <a class="back" href="/AutoKosten/">← Terug naar AutoKosten</a>
+
+  <!-- DigiDave branding -->
+  <div style="display:flex; align-items:center; gap:16px; margin-bottom:1.5rem; padding:14px 18px; background:#0d1b2a; border-radius:10px;">
+    <svg width="130" height="36" viewBox="0 0 160 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="18" cy="22" r="5" fill="#2BA8D4"/>
+      <circle cx="8"  cy="12" r="3" fill="#F0B429"/>
+      <circle cx="28" cy="10" r="2.5" fill="#2BA8D4" opacity="0.7"/>
+      <circle cx="6"  cy="30" r="2" fill="#2BA8D4" opacity="0.6"/>
+      <circle cx="30" cy="30" r="2" fill="#F0B429" opacity="0.6"/>
+      <circle cx="18" cy="4"  r="2" fill="#2BA8D4" opacity="0.5"/>
+      <line x1="18" y1="22" x2="8"  y2="12" stroke="#2BA8D4" stroke-width="1" opacity="0.6"/>
+      <line x1="18" y1="22" x2="28" y2="10" stroke="#2BA8D4" stroke-width="1" opacity="0.4"/>
+      <line x1="18" y1="22" x2="6"  y2="30" stroke="#2BA8D4" stroke-width="1" opacity="0.4"/>
+      <line x1="18" y1="22" x2="30" y2="30" stroke="#2BA8D4" stroke-width="1" opacity="0.4"/>
+      <line x1="18" y1="22" x2="18" y2="4"  stroke="#2BA8D4" stroke-width="1" opacity="0.3"/>
+      <text x="38" y="30" font-size="22" fill="white" font-weight="300" font-family="system-ui, sans-serif" letter-spacing="-0.5">digidave</text>
+    </svg>
+    <span style="color:#6b8eaa; font-size:13px;">Een app van digidave</span>
+  </div>
+
   <h1>Disclaimer</h1>
-  <p><strong>Versie:</strong> v2 fix44 · <strong>Bijgewerkt:</strong> maart 2026</p>
+  <p><strong>Versie:</strong> v2 fix66 · <strong>Bijgewerkt:</strong> november 2026</p>
 
   <div class="warn">
     AutoKosten is een hulpmiddel voor persoonlijk inzicht — geen financieel advies.
@@ -41,5 +62,11 @@
 
   <h2>Aansprakelijkheid</h2>
   <p>De ontwikkelaar is niet aansprakelijk voor schade die voortvloeit uit het gebruik van AutoKosten of de daarin gepresenteerde berekeningen.</p>
+
+  <h2>Gebruik van AI</h2>
+  <div class="ai">
+    🤖 <strong>AI-transparantie (EU AI Act)</strong> — AutoKosten is ontwikkeld met ondersteuning van een AI-assistent (Claude van Anthropic). De logica, berekeningen en inhoud zijn door de ontwikkelaar beoordeeld en getest. De app neemt geen geautomatiseerde beslissingen met rechtsgevolgen voor gebruikers.
+  </div>
+  <p>Conform de transparantievereisten van de Europese AI Act (Verordening 2024/1689) wordt vermeld dat bij de ontwikkeling van deze applicatie gebruik is gemaakt van generatieve AI-hulpmiddelen.</p>
 </body>
 </html>
