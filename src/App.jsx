@@ -7,7 +7,7 @@ import {
   Tooltip, Legend, ResponsiveContainer, ReferenceLine, PieChart, Pie, Cell
 } from "recharts";
 
-const APP_VERSION = "v2 fix66";
+const APP_VERSION = "v2 fix67";
 
 const VOORBEELD_CSV = `datum;categorie;bedrag;km;omschrijving
 2026-04-10;onderhoud;567;231000;Grote onderhoudsbeurt
@@ -2006,7 +2006,7 @@ export default function App() {
                 padding: "9px 18px", cursor: "pointer", fontWeight: 500, fontSize: 13
               }}>
                 📂 Bestand kiezen
-                <input type="file" accept=".csv,.txt" style={{ display: "none" }}
+                <input type="file" accept=".csv,.txt,text/csv,text/plain,application/csv" style={{ display: "none" }}
                   onChange={e => { handleImportFile(e.target.files[0]); e.target.value = ""; }} />
               </label>
               <span style={{ fontSize: 12, color: "#bbb", marginLeft: 10 }}>CSV of tekstbestand</span>
